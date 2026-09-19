@@ -11,8 +11,10 @@ web_directories = ["apps/web"]
 
 [access_scopes]
 # Minimum scopes for the order operations dashboard: read orders for the
-# dashboard/sync, write orders for bulk tag actions.
-scopes = "read_orders,write_orders"
+# dashboard/sync, write orders for bulk tag actions, read customers because
+# the sync query in apps/worker/src/services/order-sync.ts selects
+# order.customer { displayName email phone }.
+scopes = "read_orders,write_orders,read_customers"
 
 [webhooks]
 api_version = "2025-10"
