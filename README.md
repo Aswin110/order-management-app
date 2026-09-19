@@ -1,37 +1,55 @@
 # Order Operations
 
-A Shopify embedded app that turns Shopify orders into a simple daily operations workflow: a fast order dashboard with configurable columns, saved views, filters, bulk actions, internal notes, staff assignment, and COD verification.
+A Shopify embedded app built for teams processing high-volume custom orders: a
+fast, Shopify-native order viewer that shows the full order context - every
+line item with product image, variant, quantity, price, and custom line-item
+properties - directly in the orders list. No clicking into each order, no
+background sync, no local order cache.
 
-Not a replacement for Shopify Admin - an operational layer on top of it.
+Not a replacement for Shopify Admin - a viewing and operations layer on top of it.
+
+## How it works
+
+- The orders list is a **live Shopify Admin GraphQL query** with cursor
+  pagination and the native order search syntax (search, fulfillment/payment
+  status, date range, tag, sorting).
+- Each row expands into its line items inline: image, quantity, title,
+  variant, unit price, and custom properties (personalization details) - the
+  things a production team otherwise opens every order to see.
+- The order details page shows the complete order (up to 100 line items) with
+  totals, customer, shipping address, risk, and tags.
+- App-internal operational data (internal notes, COD verification status,
+  staff assignment, saved views, settings) is the only thing stored locally.
+  It is keyed by Shopify order id and created lazily on first use, so it works
+  for any order instantly.
 
 ## Tech stack
 
-- Shopify App Bridge + Polaris (React 18)
+- Shopify App Bridge + Polaris web components (`s-*` elements, no Polaris React)
 - React Router 7 + Vite (embedded app, `apps/web`)
-- NestJS standalone worker + BullMQ (background jobs, `apps/worker`)
-- Prisma + PostgreSQL (`packages/db`)
-- Shared types/filter/mapping/CSV logic (`packages/shared`)
+- Prisma + PostgreSQL (`packages/db`) - sessions + operational overlay only
+- Shared filter/search/mapping/CSV logic (`packages/shared`)
 - pnpm 9.4 workspace (no Turborepo), TypeScript strict, Node 22.13+
 
 ## Repository layout
 
 ```
 apps/
-  web/        Shopify embedded app (auth, dashboard, settings, webhooks)
-  worker/     Background jobs: order sync, CSV export, bulk actions
+  web/        Shopify embedded app (auth, orders list/detail/print/CSV, settings, webhooks)
 packages/
   db/         Prisma schema, migrations, client
-  shared/     Filter schemas, column defs, queue contracts, order mapping, CSV, query builder
-extensions/   Shopify app extensions (empty for MVP)
+  shared/     Filter schemas, Shopify search-query builder, order mapping, CSV, column defs
+extensions/   Shopify app extensions (empty)
 ```
 
 ## Prerequisites
 
 - Node.js >= 22.13 and pnpm 9.4 (`corepack enable`)
 - PostgreSQL 14+
-- Redis 5+ (for BullMQ background jobs)
 - A Shopify Partners account and a dev store
 - Shopify CLI (`pnpm shopify` runs the bundled one)
+
+No Redis or background worker is required.
 
 ## Setup
 
@@ -47,10 +65,8 @@ extensions/   Shopify app extensions (empty for MVP)
    - `DATABASE_URL` - PostgreSQL connection string
 
    Everything else is optional locally: `shopify app dev` injects `SHOPIFY_API_KEY`,
-   `SHOPIFY_API_SECRET` and `SHOPIFY_APP_URL`, access scopes come from
-   `[access_scopes]` in `shopify.app.toml`, and the Redis/export settings
-   fall back to `localhost:6379` and `<cwd>/exports`. See `.env.example` for the
-   full list to set in production.
+   `SHOPIFY_API_SECRET` and `SHOPIFY_APP_URL`, and access scopes come from
+   `[access_scopes]` in `shopify.app.toml`.
 
 3. Create the database schema:
 
@@ -70,61 +86,20 @@ extensions/   Shopify app extensions (empty for MVP)
 
    Then copy the `[access_scopes]` and `[webhooks]` blocks from the tracked
    `shopify.app.toml` into your new dev config, and add
-   `web_directories = ["apps/web"]`. A freshly created app has empty scopes and
-   no `orders/*` subscriptions; without them the dashboard loads but never
-   updates.
+   `web_directories = ["apps/web"]`.
 
 5. Request **protected customer data** access for your dev app in the Developer
    Dashboard (App > API access > Protected customer data access). Order payloads
-   contain customer PII, so without it `shopify app dev` fails with "This app is
-   not approved to subscribe to webhook topics containing protected customer
-   data."
-
-## Shopify commands
-
-`shopify.app.toml` lives at the **workspace root**, not in `apps/web`. That is
-deliberate, and it is what makes this work as a pnpm monorepo:
-
-- The CLI runs `npm prefix` from the config's directory and then looks for a
-  lockfile *in that directory only*, without walking up. With the config in
-  `apps/web` (no lockfile there) it falls back to npm, and `npm install` then
-  dies on `workspace:*` with `EUNSUPPORTEDPROTOCOL`. At the root it finds
-  `pnpm-lock.yaml` and correctly picks pnpm.
-- The CLI skips dependency installation entirely when the app uses workspaces,
-  which it detects via `pnpm-workspace.yaml` next to the config - again, root only.
-- `web_directories = ["apps/web"]` points the CLI at the web process, whose
-  `apps/web/shopify.web.toml` stays where it is.
-
-So every command just runs from the root:
-
-| Root command | Runs |
-| --- | --- |
-| `pnpm dev` | `shopify app dev` |
-| `pnpm app:link` | `shopify app config link` |
-| `pnpm app:use` | `shopify app config use` |
-| `pnpm app:info` | `shopify app info` |
-| `pnpm app:deploy` | `shopify app deploy` |
-| `pnpm app:generate` | `shopify app generate` |
-| `pnpm app:env` | `shopify app env` |
-| `pnpm shopify <args>` | the raw CLI |
-
-Extra flags are forwarded: `pnpm app:link --config dev-aswin`.
+   contain customer PII.
 
 ## Running locally
-
-Terminal 1 (web, creates a Cloudflare tunnel and installs on your dev store):
 
 ```bash
 pnpm dev
 ```
 
-Terminal 2 (background worker):
-
-```bash
-pnpm dev:worker
-```
-
-On first load the app registers in the database and enqueues the initial order sync. Webhooks (`orders/create`, `orders/updated`, `orders/cancelled`, `orders/fulfilled`) keep the local order index updated after that.
+That is the only process. Open the embedded app and the orders list reads live
+from your dev store - no "Sync orders" step, no second terminal.
 
 ## Running tests, lint, typecheck
 
@@ -134,26 +109,32 @@ pnpm lint         # eslint (web app)
 pnpm typecheck    # tsc across all packages
 ```
 
-Tests use mocked database/Shopify boundaries, so they run without PostgreSQL or Redis. To run against real infrastructure, provide `DATABASE_URL`/`REDIS_*` and run the worker plus `pnpm dev`.
+Tests mock the database boundary; they run without PostgreSQL.
 
 ## Deployment
 
-1. Provision PostgreSQL and Redis.
+1. Provision PostgreSQL.
 2. Set the production env vars listed in `.env.example`.
 3. `pnpm install && pnpm run setup && pnpm build`
 4. Run the web app: `pnpm --filter @order-operations/web run start`
-5. Run the worker: `pnpm --filter @order-operations/worker run start`
-6. Update the app URL and webhook endpoints in the Dev Dashboard to your production URL.
+5. Update the app URL and webhook endpoints in the Dev Dashboard to your production URL.
 
-A Dockerfile for the web app is included. The worker deploys as a second process using the same image with the worker start command.
-
-## Billing
-
-Billing is intentionally not implemented in this MVP. The Settings page carries a placeholder and the plan limits are designed so Shopify Managed App Pricing can be attached later (Free: 100 orders/month; Pro: unlimited + saved views, bulk actions, staff assignment, COD workflow, CSV exports).
+A Dockerfile for the web app is included.
 
 ## Notes on architecture
 
-- Shopify remains the source of truth for orders. PostgreSQL stores sessions, operational metadata (notes, assignments, COD status, saved views, settings) and a small indexed subset of each order for fast filtering/sorting/search.
-- Webhook processing is idempotent via the unique Shopify webhook delivery id.
-- Tag bulk actions call the Shopify GraphQL API (source of truth) and update the local index; note/assignment/COD bulk actions are local transactions.
+- Shopify remains the source of truth for orders. There is no order sync, no
+  queue, and no local order index; list/detail/print/CSV views all query the
+  Admin GraphQL API directly.
+- Filtering and search use Shopify's native order search syntax
+  (`financial_status:paid`, `fulfillment_status:unfulfilled`, `tag:...`,
+  `created_at:>=...`, bare-term search across name/customer/email).
+- Bulk actions run inline (tag add/remove go to Shopify via `tagsAdd`/
+  `tagsRemove`; notes/COD/assignment update the local overlay) and are capped
+  at 50 selected orders per action.
+- CSV export is a synchronous download capped at 500 orders for the current
+  filter set.
+- The COD list filter was removed: it relied on the synced cache and cannot be
+  expressed reliably in Shopify's order search syntax. COD status is still
+  detected per order from the payment gateway and shown as a badge.
 - Every query is shop-scoped; there is no cross-shop data path.

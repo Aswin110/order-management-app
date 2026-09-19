@@ -1,7 +1,9 @@
 // Order Operations - Prisma schema
-// Shopify order data stays the source of truth; this database stores
-// sessions, operational metadata, and the indexed order fields needed
-// for fast filtering/search/sorting.
+// Shopify is the source of truth for order data: the app reads orders live
+// through the Admin GraphQL API and never keeps a local order cache.
+// This database stores sessions plus the small amount of app-internal
+// operational data that does not exist in Shopify: notes, COD status,
+// staff assignment, saved views, and settings.
 
 generator client {
   provider = "prisma-client-js"
@@ -40,38 +42,21 @@ enum CodStatus {
   CANCELLED
 }
 
-enum ExportJobStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-}
-
-enum WebhookStatus {
-  RECEIVED
-  PROCESSED
-  FAILED
-  DUPLICATE
-}
-
 model Shop {
   id          String   @id @default(cuid())
   shopDomain  String   @unique
   scope       String?
   installedAt DateTime @default(now())
-  initialSyncEnqueuedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   users        User[]
   staff        Staff[]
-  orders       OrderMetadata[]
+  opsMeta      OrderOpsMeta[]
   notes        OrderNote[]
   assignments  OrderAssignment[]
   savedViews   SavedView[]
   settings     ShopSettings?
-  exportJobs   ExportJob[]
-  webhookEvents WebhookEvent[]
 }
 
 model User {
@@ -100,51 +85,30 @@ model Staff {
 
   shop        Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
   assignments OrderAssignment[]
-  orders      OrderMetadata[]
+  opsMeta     OrderOpsMeta[]
 
   @@index([shopId])
 }
 
-// Indexed subset of a Shopify order. Full order data is fetched live
-// from the Admin API when needed (order details page, CSV enrichment).
-model OrderMetadata {
-  id                String   @id @default(cuid())
-  shopId            String
-  shopifyOrderId    String
-  name              String // display order number, e.g. "#10491"
-  orderedAt         DateTime // order createdAt in Shopify
-  customerName      String?
-  email             String?
-  phone             String?
-  financialStatus   String?
-  fulfillmentStatus String?
-  totalPrice        Decimal? @db.Decimal(12, 2)
-  currency          String?
-  itemCount         Int      @default(0)
-  tags              String[] @default([])
-  notesCount        Int      @default(0)
-  latestNote        String?
-  codStatus         CodStatus @default(NOT_COD)
-  assignedStaffId   String?
-  riskLevel         String?
-  shippingAddress   Json?
-  deliveryDate      DateTime?
-  cancelledAt       DateTime?
-  syncedAt          DateTime @default(now())
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+// App-internal overlay for one Shopify order. Created lazily the first time
+// someone adds a note, sets a COD status, or assigns the order - order data
+// itself always comes live from Shopify, never from this table.
+model OrderOpsMeta {
+  id              String    @id @default(cuid())
+  shopId          String
+  shopifyOrderId  String
+  codStatus       CodStatus @default(NOT_COD)
+  assignedStaffId String?
+  notesCount      Int       @default(0)
+  latestNote      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  shop         Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop          Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
   assignedStaff Staff? @relation(fields: [assignedStaffId], references: [id], onDelete: SetNull)
 
   @@unique([shopId, shopifyOrderId])
   @@index([shopId])
-  @@index([shopId, orderedAt])
-  @@index([shopId, financialStatus])
-  @@index([shopId, fulfillmentStatus])
-  @@index([shopId, codStatus])
-  @@index([shopId, assignedStaffId])
-  @@index([shopId, name])
 }
 
 model OrderNote {
@@ -204,39 +168,4 @@ model ShopSettings {
   updatedAt           DateTime @updatedAt
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
-}
-
-model ExportJob {
-  id         String          @id @default(cuid())
-  shopId     String
-  status     ExportJobStatus @default(PENDING)
-  filters    Json
-  filePath   String?
-  rowCount   Int?
-  error      String?
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  completedAt DateTime?
-
-  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
-
-  @@index([shopId, status])
-}
-
-// Idempotency ledger for inbound Shopify webhooks. The Shopify webhook
-// delivery id is unique, so a redelivery is detected and skipped.
-model WebhookEvent {
-  id                String        @id @default(cuid())
-  shopId            String?
-  shopifyWebhookId  String        @unique
-  topic             String
-  payload           Json?
-  status            WebhookStatus @default(RECEIVED)
-  error             String?
-  receivedAt        DateTime      @default(now())
-  processedAt       DateTime?
-
-  shop Shop? @relation(fields: [shopId], references: [id], onDelete: SetNull)
-
-  @@index([shopId, topic])
 }

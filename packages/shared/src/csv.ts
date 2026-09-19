@@ -1,18 +1,7 @@
-// Pure CSV building for order exports. Tested without any database.
+// Pure CSV building for order exports. Tested without any network or database.
 
-export interface CsvOrderRow {
-  name: string;
-  orderedAt: Date;
-  customerName: string | null;
-  email: string | null;
-  phone: string | null;
-  totalPrice: unknown;
-  financialStatus: string | null;
-  fulfillmentStatus: string | null;
-  codStatus: string;
-  tags: string[];
-  assignedStaff?: { name: string } | null;
-}
+import type { OrderListItem } from "./admin-orders";
+import { lineItemSummary } from "./admin-orders";
 
 export const CSV_HEADERS = [
   "Order",
@@ -20,7 +9,9 @@ export const CSV_HEADERS = [
   "Customer",
   "Email",
   "Phone",
+  "Items",
   "Total",
+  "Currency",
   "Financial status",
   "Fulfillment status",
   "COD status",
@@ -35,24 +26,26 @@ export function escapeCsvCell(value: string): string {
   return value;
 }
 
-export function orderToCsvRow(order: CsvOrderRow): string {
+export function orderToCsvRow(order: OrderListItem): string {
   const cells = [
     order.name,
-    order.orderedAt.toISOString(),
+    order.orderedAt ?? "",
     order.customerName ?? "",
     order.email ?? "",
     order.phone ?? "",
-    order.totalPrice?.toString() ?? "",
+    order.items.map(lineItemSummary).join("; "),
+    order.totalPrice ?? "",
+    order.currency ?? "",
     order.financialStatus ?? "",
     order.fulfillmentStatus ?? "",
     order.codStatus,
     order.tags.join(" "),
-    order.assignedStaff?.name ?? "",
+    order.assignedStaffName ?? "",
   ];
   return cells.map(escapeCsvCell).join(",");
 }
 
-export function buildOrdersCsv(orders: CsvOrderRow[]): string {
+export function buildOrdersCsv(orders: OrderListItem[]): string {
   const lines = [CSV_HEADERS.join(",")];
   for (const order of orders) {
     lines.push(orderToCsvRow(order));

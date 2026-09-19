@@ -10,20 +10,15 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { ensureShop } from "../services/shop.server";
 import { getOrCreateSettings, updateSettings } from "../services/settings.server";
-import { listExportJobs } from "../services/export.server";
 import { listSavedViews } from "../services/views.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop);
   const settings = await getOrCreateSettings(shop.id);
-  const [exports, views] = await Promise.all([
-    listExportJobs(shop.id),
-    listSavedViews(shop.id),
-  ]);
+  const views = await listSavedViews(shop.id);
   return {
     settings: {
-      highValueThreshold: settings.highValueThreshold.toString(),
       defaultSort: settings.defaultSort ?? "orderedAt:desc",
       defaultViewId: settings.defaultViewId ?? "",
       rowsPerPage: settings.rowsPerPage,
@@ -31,13 +26,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       defaultCodStatus: settings.defaultCodStatus,
     },
     views: views.map((v) => ({ id: v.id, name: v.name })),
-    exports: exports.map((e) => ({
-      id: e.id,
-      status: e.status,
-      rowCount: e.rowCount,
-      error: e.error,
-      createdAt: e.createdAt.toISOString(),
-    })),
   };
 };
 
@@ -50,12 +38,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     if (intent === "orderSettings") {
-      const threshold = Number(formData.get("highValueThreshold"));
-      if (!Number.isFinite(threshold) || threshold < 0) {
-        return { ok: false, message: "High-value threshold must be a positive number" };
-      }
       await updateSettings(shop.id, {
-        highValueThreshold: threshold,
         defaultSort: String(formData.get("defaultSort") ?? "orderedAt:desc"),
         defaultViewId: String(formData.get("defaultViewId") ?? "") || null,
         rowsPerPage: Number(formData.get("rowsPerPage") ?? 50),
@@ -76,10 +59,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function SettingsPage() {
-  const { settings, views, exports } = useLoaderData<typeof loader>();
+  const { settings, views } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<{ ok: boolean; message: string }>();
 
-  const [threshold, setThreshold] = useState(settings.highValueThreshold);
   const [defaultSort, setDefaultSort] = useState(settings.defaultSort);
   const [defaultViewId, setDefaultViewId] = useState(settings.defaultViewId);
   const [rowsPerPage, setRowsPerPage] = useState(String(settings.rowsPerPage));
@@ -94,12 +76,6 @@ export default function SettingsPage() {
 
       <s-section heading="Order settings">
         <s-stack direction="block" gap="base">
-          <s-number-field
-            label="High-value threshold"
-            details="Orders above this total are flagged as high value. Stored as a plain number and displayed with the order currency."
-            value={threshold}
-            onChange={(event) => setThreshold(event.currentTarget.value)}
-          />
           <s-grid gridTemplateColumns="repeat(auto-fit, minmax(180px, 1fr))" gap="base">
             <s-select
               label="Default sorting"
@@ -110,6 +86,8 @@ export default function SettingsPage() {
               <s-option value="orderedAt:asc">Oldest first</s-option>
               <s-option value="totalPrice:desc">Highest total</s-option>
               <s-option value="totalPrice:asc">Lowest total</s-option>
+              <s-option value="name:asc">Order number A-Z</s-option>
+              <s-option value="name:desc">Order number Z-A</s-option>
             </s-select>
             <s-select
               label="Default view"
@@ -123,6 +101,7 @@ export default function SettingsPage() {
             </s-select>
             <s-number-field
               label="Rows per page"
+              details="10 to 250; each page is one live Shopify query."
               value={rowsPerPage}
               onChange={(event) => setRowsPerPage(event.currentTarget.value)}
             />
@@ -132,13 +111,7 @@ export default function SettingsPage() {
               variant="primary"
               onClick={() =>
                 fetcher.submit(
-                  {
-                    intent: "orderSettings",
-                    highValueThreshold: threshold,
-                    defaultSort,
-                    defaultViewId,
-                    rowsPerPage,
-                  },
+                  { intent: "orderSettings", defaultSort, defaultViewId, rowsPerPage },
                   { method: "post" },
                 )
               }
@@ -189,42 +162,9 @@ export default function SettingsPage() {
         </s-paragraph>
       </s-section>
 
-      <s-section heading="Exports">
-        {exports.length === 0 ? (
-          <s-paragraph color="subdued">No exports yet. Use Export CSV on the Orders page.</s-paragraph>
-        ) : (
-          <s-stack direction="block" gap="small-200">
-            {exports.map((job) => (
-              <s-stack key={job.id} direction="inline" gap="base" alignItems="center">
-                <s-badge
-                  tone={
-                    job.status === "COMPLETED" ? "success"
-                    : job.status === "FAILED" ? "critical"
-                    : "warning"
-                  }
-                >
-                  {job.status}
-                </s-badge>
-                <s-text>
-                  {new Date(job.createdAt).toLocaleString("en-IN")}
-                  {job.rowCount != null ? ` - ${job.rowCount} rows` : ""}
-                </s-text>
-                {job.status === "COMPLETED" ? (
-                  <s-button href={`/app/exports/${job.id}/download`} variant="secondary">
-                    Download
-                  </s-button>
-                ) : job.error ? (
-                  <s-text tone="critical">{job.error}</s-text>
-                ) : null}
-              </s-stack>
-            ))}
-          </s-stack>
-        )}
-      </s-section>
-
       <s-section heading="Billing">
         <s-paragraph color="subdued">
-          Shopify Managed App Pricing will be attached here. Plans are kept configurable: Free (100 orders/month, basic filters) and Pro (unlimited orders, saved views, bulk actions, staff assignment, COD workflow, CSV exports).
+          Shopify Managed App Pricing will be attached here.
         </s-paragraph>
       </s-section>
     </s-page>

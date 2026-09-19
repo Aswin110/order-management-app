@@ -6,92 +6,47 @@ import type {
 import { useLoaderData, useFetcher, useRouteError } from "react-router";
 import { useState } from "react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import type { AdminOrderNode } from "@order-operations/shared";
 
 import { authenticate } from "../shopify.server";
-import prisma from "../db.server";
 import { ensureShop } from "../services/shop.server";
+import { fetchOrderDetails } from "../services/shopify-orders.server";
+import { getOrderOverlay } from "../services/overlay.server";
 import { listOrderNotes, addOrderNote, deleteOrderNote } from "../services/notes.server";
 import { setCodStatus } from "../services/cod.server";
 import { listStaff, assignOrder, unassignOrder } from "../services/staff.server";
 import { adminOrderUrl } from "../lib/admin-url";
+import { isCodOrder } from "@order-operations/shared";
 import { CodBadge } from "../components/CodBadge";
 import { FinancialStatusBadge, FulfillmentStatusBadge, RiskBadge } from "../components/StatusBadges";
 import type { CodStatus } from "@prisma/client";
-
-const ORDER_QUERY = `#graphql
-  query OrderDetails($id: ID!) {
-    order(id: $id) {
-      id
-      name
-      createdAt
-      cancelledAt
-      email
-      phone
-      displayFinancialStatus
-      displayFulfillmentStatus
-      currencyCode
-      tags
-      riskLevel
-      subtotalPriceSet { shopMoney { amount } }
-      totalDiscountsSet { shopMoney { amount } }
-      totalShippingPriceSet { shopMoney { amount } }
-      totalTaxSet { shopMoney { amount } }
-      totalPriceSet { shopMoney { amount } }
-      customer { displayName email phone }
-      shippingAddress {
-        name address1 address2 city provinceCode zip countryCodeV2 phone
-      }
-      lineItems(first: 100) {
-        nodes {
-          id
-          title
-          variantTitle
-          quantity
-          originalUnitPriceSet { shopMoney { amount } }
-          discountedTotalSet { shopMoney { amount } }
-        }
-      }
-    }
-  }
-`;
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop);
   const shopifyOrderId = decodeURIComponent(params.orderId ?? "");
 
-  const [local, notes, staff] = await Promise.all([
-    prisma.orderMetadata.findUnique({
-      where: { shopId_shopifyOrderId: { shopId: shop.id, shopifyOrderId } },
-      include: { assignedStaff: true },
-    }),
-    listOrderNotes(shop.id, shopifyOrderId),
-    listStaff(shop.id),
-  ]);
-
-  let order: Record<string, never> | null = null;
+  let order: AdminOrderNode | null = null;
   let fetchError: string | null = null;
   try {
-    const response = await admin.graphql(ORDER_QUERY, { variables: { id: shopifyOrderId } });
-    const body = await response.json();
-    order = (body.data?.order ?? null) as never;
+    order = await fetchOrderDetails(admin, shopifyOrderId);
+    if (!order) fetchError = "Order not found in Shopify";
   } catch (error) {
     fetchError = error instanceof Error ? error.message : "Could not load order from Shopify";
   }
+
+  const [overlay, notes, staff] = await Promise.all([
+    getOrderOverlay(shop.id, shopifyOrderId),
+    listOrderNotes(shop.id, shopifyOrderId),
+    listStaff(shop.id),
+  ]);
 
   return {
     shopDomain: session.shop,
     shopifyOrderId,
     order,
     fetchError,
-    local: local
-      ? {
-          codStatus: local.codStatus,
-          assignedStaffId: local.assignedStaffId,
-          assignedStaffName: local.assignedStaff?.name ?? null,
-          notesCount: local.notesCount,
-        }
-      : null,
+    overlay,
     notes: notes.map((n) => ({
       id: n.id,
       content: n.content,
@@ -148,7 +103,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
-function money(set: { shopMoney?: { amount?: string } } | null | undefined, currency: string) {
+function money(set: { shopMoney?: { amount?: string | null } | null } | null | undefined, currency: string) {
   const amount = set?.shopMoney?.amount;
   return amount ? `${currency} ${Number(amount).toLocaleString("en-IN")}` : "-";
 }
@@ -158,28 +113,11 @@ export default function OrderDetailsPage() {
   const fetcher = useFetcher<{ ok: boolean; message: string }>();
   const [noteContent, setNoteContent] = useState("");
 
-  const order = data.order as {
-    name?: string;
-    createdAt?: string;
-    cancelledAt?: string | null;
-    email?: string | null;
-    phone?: string | null;
-    displayFinancialStatus?: string;
-    displayFulfillmentStatus?: string;
-    currencyCode?: string;
-    tags?: string[];
-    riskLevel?: string | null;
-    customer?: { displayName?: string | null; email?: string | null; phone?: string | null } | null;
-    shippingAddress?: { name?: string; address1?: string; address2?: string; city?: string; provinceCode?: string; zip?: string; countryCodeV2?: string; phone?: string } | null;
-    subtotalPriceSet?: { shopMoney?: { amount?: string } };
-    totalDiscountsSet?: { shopMoney?: { amount?: string } };
-    totalShippingPriceSet?: { shopMoney?: { amount?: string } };
-    totalTaxSet?: { shopMoney?: { amount?: string } };
-    totalPriceSet?: { shopMoney?: { amount?: string } };
-    lineItems?: { nodes: Array<{ id: string; title: string; variantTitle?: string | null; quantity: number; originalUnitPriceSet?: { shopMoney?: { amount?: string } }; discountedTotalSet?: { shopMoney?: { amount?: string } } }> };
-  } | null;
-
+  const order = data.order;
   const currency = order?.currencyCode ?? "";
+  const lineItems = order?.lineItems?.nodes ?? [];
+  const isCod = isCodOrder(order?.paymentGatewayNames ?? []);
+  const codStatus = data.overlay?.codStatus ?? (isCod ? "PENDING" : "NOT_COD");
 
   const totalRow = (label: string, value: string, strong = false) => (
     <s-stack direction="inline" gap="base" justifyContent="space-between">
@@ -215,28 +153,37 @@ export default function OrderDetailsPage() {
       ) : null}
 
       {order ? (
-        <s-section heading="Items">
+        <s-section heading={`Items (${lineItems.reduce((sum, i) => sum + (i.quantity ?? 0), 0)})`}>
           <s-stack direction="block" gap="base">
-            <s-table>
-              <s-table-header-row>
-                <s-table-header listSlot="primary">Product</s-table-header>
-                <s-table-header>Variant</s-table-header>
-                <s-table-header format="numeric">Qty</s-table-header>
-                <s-table-header format="numeric">Price</s-table-header>
-                <s-table-header format="numeric">Total</s-table-header>
-              </s-table-header-row>
-              <s-table-body>
-                {(order.lineItems?.nodes ?? []).map((item) => (
-                  <s-table-row key={item.id}>
-                    <s-table-cell>{item.title}</s-table-cell>
-                    <s-table-cell>{item.variantTitle ?? "-"}</s-table-cell>
-                    <s-table-cell>{String(item.quantity)}</s-table-cell>
-                    <s-table-cell>{money(item.originalUnitPriceSet, currency)}</s-table-cell>
-                    <s-table-cell>{money(item.discountedTotalSet, currency)}</s-table-cell>
-                  </s-table-row>
-                ))}
-              </s-table-body>
-            </s-table>
+            <s-stack direction="block" gap="base">
+              {lineItems.map((item) => (
+                <s-stack key={item.id} direction="inline" gap="base" alignItems="start">
+                  {item.image?.url ? (
+                    <s-thumbnail src={item.image.url} alt={item.image.altText ?? item.title ?? ""} size="large" />
+                  ) : null}
+                  <s-stack direction="block" gap="small-500">
+                    <s-text type="strong">
+                      {item.quantity} × {item.title}
+                    </s-text>
+                    {item.variantTitle ? <s-text color="subdued">{item.variantTitle}</s-text> : null}
+                    {item.sku ? <s-text color="subdued">SKU: {item.sku}</s-text> : null}
+                    {(item.customAttributes ?? []).length ? (
+                      <s-stack direction="block" gap="small-500">
+                        {(item.customAttributes ?? []).map((attr) => (
+                          <s-text key={attr.key} color="subdued">
+                            {attr.key}: {attr.value}
+                          </s-text>
+                        ))}
+                      </s-stack>
+                    ) : null}
+                  </s-stack>
+                  <s-text>
+                    {money(item.discountedTotalSet, currency)}
+                    {"  "}({money(item.originalUnitPriceSet, currency)} each)
+                  </s-text>
+                </s-stack>
+              ))}
+            </s-stack>
             <s-divider />
             <s-stack direction="block" gap="small-500">
               {totalRow("Subtotal", money(order.subtotalPriceSet, currency))}
@@ -321,6 +268,9 @@ export default function OrderDetailsPage() {
                 {order.tags.map((t) => <s-badge key={t} tone="neutral">{t}</s-badge>)}
               </s-stack>
             ) : null}
+            {order.note ? (
+              <s-paragraph color="subdued">Order note: {order.note}</s-paragraph>
+            ) : null}
           </s-stack>
         </s-section>
       ) : null}
@@ -339,28 +289,30 @@ export default function OrderDetailsPage() {
         </s-section>
       ) : null}
 
-      <s-section heading="COD verification">
-        <s-stack direction="block" gap="small-200">
-          <CodBadge status={data.local?.codStatus ?? "NOT_COD"} />
-          <s-select
-            label="Change COD status"
-            value={data.local?.codStatus ?? "NOT_COD"}
-            onChange={(event) =>
-              fetcher.submit({ intent: "setCod", codStatus: event.currentTarget.value }, { method: "post" })
-            }
-          >
-            <s-option value="NOT_COD">Not COD</s-option>
-            <s-option value="PENDING">Pending</s-option>
-            <s-option value="VERIFIED">Verified</s-option>
-            <s-option value="FAILED">Failed</s-option>
-            <s-option value="CANCELLED">Cancelled</s-option>
-          </s-select>
-        </s-stack>
-      </s-section>
+      {isCod || (data.overlay?.codStatus && data.overlay.codStatus !== "NOT_COD") ? (
+        <s-section heading="COD verification">
+          <s-stack direction="block" gap="small-200">
+            <CodBadge status={codStatus} />
+            <s-select
+              label="Change COD status"
+              value={codStatus}
+              onChange={(event) =>
+                fetcher.submit({ intent: "setCod", codStatus: event.currentTarget.value }, { method: "post" })
+              }
+            >
+              <s-option value="NOT_COD">Not COD</s-option>
+              <s-option value="PENDING">Pending</s-option>
+              <s-option value="VERIFIED">Verified</s-option>
+              <s-option value="FAILED">Failed</s-option>
+              <s-option value="CANCELLED">Cancelled</s-option>
+            </s-select>
+          </s-stack>
+        </s-section>
+      ) : null}
 
       <s-section heading="Assigned staff">
         <s-stack direction="block" gap="small-200">
-          <s-paragraph>{data.local?.assignedStaffName ?? "Unassigned"}</s-paragraph>
+          <s-paragraph>{data.overlay?.assignedStaffName ?? "Unassigned"}</s-paragraph>
           <s-select
             label="Assign to"
             value=""
@@ -374,7 +326,7 @@ export default function OrderDetailsPage() {
               <s-option key={s.id} value={s.id}>{s.name}</s-option>
             ))}
           </s-select>
-          {data.local?.assignedStaffId ? (
+          {data.overlay?.assignedStaffId ? (
             <s-stack direction="inline">
               <s-button onClick={() => fetcher.submit({ intent: "unassign" }, { method: "post" })}>
                 Unassign

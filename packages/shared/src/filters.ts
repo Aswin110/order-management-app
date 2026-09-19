@@ -8,18 +8,21 @@ export const codStatusSchema = z.enum([
   "CANCELLED",
 ]);
 
+/**
+ * Filters that translate directly into the Shopify Admin order search
+ * syntax (see buildOrderSearchQuery). Anything that cannot be expressed
+ * as a Shopify query (COD status, staff assignment, internal notes)
+ * deliberately does not live here: the orders list is always a live
+ * Shopify query, never a filtered local cache.
+ */
 export const orderFiltersSchema = z.object({
-  fulfillment: z.enum(["ANY", "FULFILLED", "UNFULFILLED"]).default("ANY"),
-  financial: z.enum(["ANY", "PAID", "PENDING"]).default("ANY"),
-  cod: z
-    .enum(["ANY", "COD", "COD_PENDING", "COD_VERIFIED", "NOT_COD"])
+  fulfillment: z
+    .enum(["ANY", "FULFILLED", "UNFULFILLED", "PARTIALLY_FULFILLED"])
     .default("ANY"),
-  highValueOnly: z.boolean().default(false),
-  hasNotes: z.boolean().default(false),
-  hasTags: z.boolean().default(false),
-  tag: z.string().optional(),
-  assigned: z.enum(["ANY", "ASSIGNED", "UNASSIGNED"]).default("ANY"),
-  staffId: z.string().optional(),
+  financial: z
+    .enum(["ANY", "PAID", "PENDING", "AUTHORIZED", "REFUNDED"])
+    .default("ANY"),
+  tag: z.string().trim().max(100).optional(),
   dateRange: z.enum(["ANY", "TODAY", "LAST_7_DAYS", "LAST_30_DAYS"]).default("ANY"),
   search: z.string().trim().max(200).optional(),
 });
@@ -29,9 +32,7 @@ export type OrderFilters = z.infer<typeof orderFiltersSchema>;
 export const defaultOrderFilters: OrderFilters = orderFiltersSchema.parse({});
 
 export const sortSchema = z.object({
-  column: z
-    .enum(["name", "orderedAt", "customerName", "totalPrice", "itemCount"])
-    .default("orderedAt"),
+  column: z.enum(["name", "orderedAt", "totalPrice"]).default("orderedAt"),
   direction: z.enum(["asc", "desc"]).default("desc"),
 });
 

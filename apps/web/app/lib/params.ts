@@ -27,13 +27,7 @@ export function parseOrdersPageParams(
   const filters = orderFiltersSchema.parse({
     fulfillment: p.get("fulfillment") ?? undefined,
     financial: p.get("financial") ?? undefined,
-    cod: p.get("cod") ?? undefined,
-    highValueOnly: p.get("hv") === "1" ? true : undefined,
-    hasNotes: p.get("notes") === "1" ? true : undefined,
-    hasTags: p.get("tags") === "1" ? true : undefined,
     tag: p.get("tag") ?? undefined,
-    assigned: p.get("assigned") ?? undefined,
-    staffId: p.get("staff") ?? undefined,
     dateRange: p.get("range") ?? undefined,
     search: p.get("q") ?? undefined,
   });
@@ -69,13 +63,7 @@ export function buildOrdersSearch(
   const p = new URLSearchParams();
   if (filters.fulfillment !== "ANY") p.set("fulfillment", filters.fulfillment);
   if (filters.financial !== "ANY") p.set("financial", filters.financial);
-  if (filters.cod !== "ANY") p.set("cod", filters.cod);
-  if (filters.highValueOnly) p.set("hv", "1");
-  if (filters.hasNotes) p.set("notes", "1");
-  if (filters.hasTags) p.set("tags", "1");
   if (filters.tag) p.set("tag", filters.tag);
-  if (filters.assigned !== "ANY") p.set("assigned", filters.assigned);
-  if (filters.staffId) p.set("staff", filters.staffId);
   if (filters.dateRange !== "ANY") p.set("range", filters.dateRange);
   if (filters.search) p.set("q", filters.search);
   if (sort.column !== "orderedAt") p.set("sort", sort.column);

@@ -16,10 +16,17 @@ export async function addOrderNote(options: {
     const note = await tx.orderNote.create({
       data: { shopId, shopifyOrderId, content: trimmed, authorId: authorId ?? null },
     });
-    // Keep the denormalized table columns in sync for fast list display.
-    await tx.orderMetadata.updateMany({
-      where: { shopId, shopifyOrderId },
-      data: {
+    // Keep the overlay preview in sync for fast list display. The overlay
+    // is created on first use; orders never need to be synced first.
+    await tx.orderOpsMeta.upsert({
+      where: { shopId_shopifyOrderId: { shopId, shopifyOrderId } },
+      create: {
+        shopId,
+        shopifyOrderId,
+        latestNote: trimmed.slice(0, 200),
+        notesCount: 1,
+      },
+      update: {
         latestNote: trimmed.slice(0, 200),
         notesCount: { increment: 1 },
       },
@@ -45,11 +52,14 @@ export async function deleteOrderNote(shopId: string, noteId: string) {
       where: { shopId, shopifyOrderId: note.shopifyOrderId },
       orderBy: { createdAt: "desc" },
     });
-    await tx.orderMetadata.updateMany({
+    const remainingCount = await tx.orderNote.count({
+      where: { shopId, shopifyOrderId: note.shopifyOrderId },
+    });
+    await tx.orderOpsMeta.updateMany({
       where: { shopId, shopifyOrderId: note.shopifyOrderId },
       data: {
         latestNote: remaining ? remaining.content.slice(0, 200) : null,
-        notesCount: { decrement: 1 },
+        notesCount: remainingCount,
       },
     });
   });
