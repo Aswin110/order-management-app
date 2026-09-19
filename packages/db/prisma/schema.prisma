@@ -1,0 +1,242 @@
+// Order Operations - Prisma schema
+// Shopify order data stays the source of truth; this database stores
+// sessions, operational metadata, and the indexed order fields needed
+// for fast filtering/search/sorting.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+enum CodStatus {
+  NOT_COD
+  PENDING
+  VERIFIED
+  FAILED
+  CANCELLED
+}
+
+enum ExportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum WebhookStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+  DUPLICATE
+}
+
+model Shop {
+  id          String   @id @default(cuid())
+  shopDomain  String   @unique
+  scope       String?
+  installedAt DateTime @default(now())
+  initialSyncEnqueuedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users        User[]
+  staff        Staff[]
+  orders       OrderMetadata[]
+  notes        OrderNote[]
+  assignments  OrderAssignment[]
+  savedViews   SavedView[]
+  settings     ShopSettings?
+  exportJobs   ExportJob[]
+  webhookEvents WebhookEvent[]
+}
+
+model User {
+  id            String   @id @default(cuid())
+  shopId        String
+  shopifyUserId BigInt?
+  name          String
+  email         String?
+  createdAt     DateTime @default(now())
+
+  shop  Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  notes OrderNote[]
+
+  @@index([shopId])
+}
+
+model Staff {
+  id            String   @id @default(cuid())
+  shopId        String
+  name          String
+  email         String?
+  shopifyUserId BigInt?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  shop        Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  assignments OrderAssignment[]
+  orders      OrderMetadata[]
+
+  @@index([shopId])
+}
+
+// Indexed subset of a Shopify order. Full order data is fetched live
+// from the Admin API when needed (order details page, CSV enrichment).
+model OrderMetadata {
+  id                String   @id @default(cuid())
+  shopId            String
+  shopifyOrderId    String
+  name              String // display order number, e.g. "#10491"
+  orderedAt         DateTime // order createdAt in Shopify
+  customerName      String?
+  email             String?
+  phone             String?
+  financialStatus   String?
+  fulfillmentStatus String?
+  totalPrice        Decimal? @db.Decimal(12, 2)
+  currency          String?
+  itemCount         Int      @default(0)
+  tags              String[] @default([])
+  notesCount        Int      @default(0)
+  latestNote        String?
+  codStatus         CodStatus @default(NOT_COD)
+  assignedStaffId   String?
+  riskLevel         String?
+  shippingAddress   Json?
+  deliveryDate      DateTime?
+  cancelledAt       DateTime?
+  syncedAt          DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  shop         Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  assignedStaff Staff? @relation(fields: [assignedStaffId], references: [id], onDelete: SetNull)
+
+  @@unique([shopId, shopifyOrderId])
+  @@index([shopId])
+  @@index([shopId, orderedAt])
+  @@index([shopId, financialStatus])
+  @@index([shopId, fulfillmentStatus])
+  @@index([shopId, codStatus])
+  @@index([shopId, assignedStaffId])
+  @@index([shopId, name])
+}
+
+model OrderNote {
+  id             String   @id @default(cuid())
+  shopId         String
+  shopifyOrderId String
+  authorId       String?
+  content        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  shop   Shop  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([shopId, shopifyOrderId, createdAt])
+}
+
+model OrderAssignment {
+  id             String   @id @default(cuid())
+  shopId         String
+  shopifyOrderId String
+  staffId        String
+  assignedAt     DateTime @default(now())
+
+  shop  Shop  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, shopifyOrderId])
+  @@index([shopId, staffId])
+}
+
+model SavedView {
+  id        String   @id @default(cuid())
+  shopId    String
+  name      String
+  filters   Json // serialized OrderFilters
+  sort      Json? // { column, direction }
+  columns   String[] @default([])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId])
+}
+
+model ShopSettings {
+  shopId              String   @id
+  highValueThreshold  Decimal  @default(5000) @db.Decimal(12, 2)
+  defaultViewId       String?
+  defaultSort         String? // e.g. "orderedAt:desc"
+  defaultColumns      String[] @default([])
+  rowsPerPage         Int      @default(50)
+  codEnabled          Boolean  @default(true)
+  defaultCodStatus    CodStatus @default(PENDING)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model ExportJob {
+  id         String          @id @default(cuid())
+  shopId     String
+  status     ExportJobStatus @default(PENDING)
+  filters    Json
+  filePath   String?
+  rowCount   Int?
+  error      String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  completedAt DateTime?
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, status])
+}
+
+// Idempotency ledger for inbound Shopify webhooks. The Shopify webhook
+// delivery id is unique, so a redelivery is detected and skipped.
+model WebhookEvent {
+  id                String        @id @default(cuid())
+  shopId            String?
+  shopifyWebhookId  String        @unique
+  topic             String
+  payload           Json?
+  status            WebhookStatus @default(RECEIVED)
+  error             String?
+  receivedAt        DateTime      @default(now())
+  processedAt       DateTime?
+
+  shop Shop? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  @@index([shopId, topic])
+}

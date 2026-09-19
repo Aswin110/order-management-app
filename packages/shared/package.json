@@ -1,0 +1,24 @@
+{
+  "name": "@order-operations/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"shared: lint via dependents\" && exit 0",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "zod": "^3.23.8",
+    "@prisma/client": "^6.16.3",
+    "@order-operations/db": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "@types/node": "^25.5.2"
+  }
+}

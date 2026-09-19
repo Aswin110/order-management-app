@@ -1,0 +1,31 @@
+# This file stores configurations for your Shopify app.
+# client_id is filled in by `shopify app dev` / `shopify app config link`.
+client_id = ""
+name = "Order Operations"
+handle = "order-operations"
+
+[access_scopes]
+# Minimum scopes for the order operations dashboard: read orders for the
+# dashboard/sync, write orders for bulk tag actions.
+scopes = "read_orders,write_orders"
+
+[webhooks]
+api_version = "2025-10"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = ["app/uninstalled"]
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  # Handled by: /app/routes/webhooks.orders.tsx
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders"
+  topics = ["orders/create", "orders/updated", "orders/cancelled", "orders/fulfilled"]
+
+  # Mandatory compliance topics for public apps
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/compliance"
+  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
