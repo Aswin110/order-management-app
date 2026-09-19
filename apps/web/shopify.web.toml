@@ -1,0 +1,9 @@
+name = "React Router"
+roles = ["frontend", "backend"]
+webhooks_path = "/webhooks/app/uninstalled"
+
+# Prisma lives in packages/db in this workspace, so the generate/migrate
+# steps run through the db package rather than against apps/web.
+[commands]
+predev = "pnpm --filter @order-operations/db run generate"
+dev = "pnpm --filter @order-operations/db run migrate:deploy && pnpm exec react-router dev"

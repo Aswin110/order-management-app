@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --env-file=../../.env src/main.ts",
     "build": "tsc --noEmit -p tsconfig.json",
-    "start": "tsx src/main.ts",
+    "start": "tsx --env-file=../../.env src/main.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "echo \"worker: lint via root eslint\" && exit 0",
     "test": "vitest run --passWithNoTests"

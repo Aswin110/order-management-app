@@ -1,8 +1,6 @@
-import { Badge } from "@shopify/polaris";
-
-const TONE: Record<string, "success" | "attention" | "critical" | "info" | undefined> = {
-  NOT_COD: undefined,
-  PENDING: "attention",
+const TONE: Record<string, "success" | "warning" | "critical" | "info" | "neutral"> = {
+  NOT_COD: "neutral",
+  PENDING: "warning",
   VERIFIED: "success",
   FAILED: "critical",
   CANCELLED: "info",
@@ -17,5 +15,5 @@ const LABEL: Record<string, string> = {
 };
 
 export function CodBadge({ status }: { status: string }) {
-  return <Badge tone={TONE[status]}>{LABEL[status] ?? status}</Badge>;
+  return <s-badge tone={TONE[status] ?? "neutral"}>{LABEL[status] ?? status}</s-badge>;
 }

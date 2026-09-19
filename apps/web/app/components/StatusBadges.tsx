@@ -1,26 +1,26 @@
-import { Badge } from "@shopify/polaris";
+type Tone = "success" | "warning" | "critical" | "info" | "neutral";
 
 export function FinancialStatusBadge({ status }: { status: string | null }) {
   const s = status ?? "UNKNOWN";
-  const tone =
+  const tone: Tone =
     s === "PAID" ? "success"
-    : s === "PENDING" || s === "AUTHORIZED" ? "attention"
+    : s === "PENDING" || s === "AUTHORIZED" ? "warning"
     : s === "REFUNDED" || s === "VOIDED" ? "info"
-    : undefined;
-  return <Badge tone={tone as never}>{s.replace(/_/g, " ")}</Badge>;
+    : "neutral";
+  return <s-badge tone={tone}>{s.replace(/_/g, " ")}</s-badge>;
 }
 
 export function FulfillmentStatusBadge({ status }: { status: string | null }) {
   const s = status ?? "UNFULFILLED";
-  const tone =
+  const tone: Tone =
     s === "FULFILLED" ? "success"
-    : s === "PARTIALLY_FULFILLED" ? "attention"
-    : undefined;
-  return <Badge tone={tone as never}>{s.replace(/_/g, " ")}</Badge>;
+    : s === "PARTIALLY_FULFILLED" ? "warning"
+    : "neutral";
+  return <s-badge tone={tone}>{s.replace(/_/g, " ")}</s-badge>;
 }
 
 export function RiskBadge({ level }: { level: string | null }) {
   if (!level || level === "NONE") return null;
-  const tone = level === "HIGH" ? "critical" : level === "MEDIUM" ? "attention" : "info";
-  return <Badge tone={tone as never}>{`${level.charAt(0)}${level.slice(1).toLowerCase()} risk`}</Badge>;
+  const tone: Tone = level === "HIGH" ? "critical" : level === "MEDIUM" ? "warning" : "info";
+  return <s-badge tone={tone}>{`${level.charAt(0)}${level.slice(1).toLowerCase()} risk`}</s-badge>;
 }

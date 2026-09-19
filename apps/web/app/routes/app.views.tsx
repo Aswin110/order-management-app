@@ -4,17 +4,6 @@ import type {
   LoaderFunctionArgs,
 } from "react-router";
 import { useLoaderData, useFetcher, useNavigate, useRouteError } from "react-router";
-import {
-  Page,
-  Layout,
-  Card,
-  IndexTable,
-  Text,
-  Button,
-  InlineStack,
-  EmptyState,
-  Banner,
-} from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
@@ -71,78 +60,76 @@ export default function SavedViewsPage() {
   const navigate = useNavigate();
 
   return (
-    <Page title="Saved views">
-      <Layout>
-        {fetcher.data?.message ? (
-          <Layout.Section>
-            <Banner tone={fetcher.data.ok ? "success" : "critical"}>
-              <p>{fetcher.data.message}</p>
-            </Banner>
-          </Layout.Section>
-        ) : null}
-        <Layout.Section>
-          <Card padding="0">
-            {views.length === 0 ? (
-              <EmptyState
-                heading="No saved views yet"
-                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-              >
-                <p>Set filters on the Orders page, then use &quot;Save current view&quot; to keep them here.</p>
-              </EmptyState>
-            ) : (
-              <IndexTable
-                resourceName={{ singular: "view", plural: "views" }}
-                itemCount={views.length}
-                selectable={false}
-                headings={[{ title: "Name" }, { title: "Created" }, { title: "Actions" }]}
-              >
-                {views.map((view, index) => (
-                  <IndexTable.Row id={view.id} key={view.id} position={index}>
-                    <IndexTable.Cell>
-                      <Text as="span" variant="bodyMd" fontWeight="semibold">{view.name}</Text>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>
-                      {new Date(view.createdAt).toLocaleDateString("en-IN")}
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>
-                      <InlineStack gap="200">
-                        <Button
-                          size="slim"
-                          onClick={() =>
-                            navigate(
-                              `/app/orders${buildOrdersSearch(
-                                view.filters as unknown as OrderFilters,
-                                (view.sort as unknown as OrderSort) ?? { column: "orderedAt", direction: "desc" },
-                                (view.columns as OrderColumnId[]).length ? (view.columns as OrderColumnId[]) : undefined,
-                              )}`,
-                            )
-                          }
-                        >
-                          Open
-                        </Button>
-                        <Button
-                          size="slim"
-                          onClick={() => fetcher.submit({ intent: "duplicate", viewId: view.id }, { method: "post" })}
-                        >
-                          Duplicate
-                        </Button>
-                        <Button
-                          size="slim"
-                          tone="critical"
-                          onClick={() => fetcher.submit({ intent: "delete", viewId: view.id }, { method: "post" })}
-                        >
-                          Delete
-                        </Button>
-                      </InlineStack>
-                    </IndexTable.Cell>
-                  </IndexTable.Row>
-                ))}
-              </IndexTable>
-            )}
-          </Card>
-        </Layout.Section>
-      </Layout>
-    </Page>
+    <s-page heading="Saved views">
+      {fetcher.data?.message ? (
+        <s-banner tone={fetcher.data.ok ? "success" : "critical"}>
+          {fetcher.data.message}
+        </s-banner>
+      ) : null}
+      <s-section padding="none">
+        {views.length === 0 ? (
+          <s-box padding="large-100">
+            <s-stack direction="block" gap="base" alignItems="center">
+              <s-heading>No saved views yet</s-heading>
+              <s-paragraph color="subdued">
+                Set filters on the Orders page, then use &quot;Save current view&quot; to keep them here.
+              </s-paragraph>
+            </s-stack>
+          </s-box>
+        ) : (
+          <s-table>
+            <s-table-header-row>
+              <s-table-header listSlot="primary">Name</s-table-header>
+              <s-table-header>Created</s-table-header>
+              <s-table-header>Actions</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {views.map((view) => (
+                <s-table-row key={view.id}>
+                  <s-table-cell>
+                    <s-text type="strong">{view.name}</s-text>
+                  </s-table-cell>
+                  <s-table-cell>
+                    {new Date(view.createdAt).toLocaleDateString("en-IN")}
+                  </s-table-cell>
+                  <s-table-cell>
+                    <s-stack direction="inline" gap="small-200">
+                      <s-button
+                        variant="secondary"
+                        onClick={() =>
+                          navigate(
+                            `/app/orders${buildOrdersSearch(
+                              view.filters as unknown as OrderFilters,
+                              (view.sort as unknown as OrderSort) ?? { column: "orderedAt", direction: "desc" },
+                              (view.columns as OrderColumnId[]).length ? (view.columns as OrderColumnId[]) : undefined,
+                            )}`,
+                          )
+                        }
+                      >
+                        Open
+                      </s-button>
+                      <s-button
+                        variant="secondary"
+                        onClick={() => fetcher.submit({ intent: "duplicate", viewId: view.id }, { method: "post" })}
+                      >
+                        Duplicate
+                      </s-button>
+                      <s-button
+                        variant="secondary"
+                        tone="critical"
+                        onClick={() => fetcher.submit({ intent: "delete", viewId: view.id }, { method: "post" })}
+                      >
+                        Delete
+                      </s-button>
+                    </s-stack>
+                  </s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+        )}
+      </s-section>
+    </s-page>
   );
 }
 

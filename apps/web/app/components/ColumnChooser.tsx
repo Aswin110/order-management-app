@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Button, Popover, BlockStack, Checkbox } from "@shopify/polaris";
 import { ORDER_COLUMNS, type OrderColumnId } from "@order-operations/shared";
+
+const POPOVER_ID = "order-columns-popover";
 
 export function ColumnChooser(props: {
   selected: OrderColumnId[];
   onApply: (columns: OrderColumnId[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<OrderColumnId[]>(props.selected);
 
   const toggle = (id: OrderColumnId) => {
@@ -16,37 +16,35 @@ export function ColumnChooser(props: {
   };
 
   return (
-    <Popover
-      active={open}
-      activator={<Button onClick={() => { setDraft(props.selected); setOpen(true); }}>Columns</Button>}
-      onClose={() => setOpen(false)}
-      preferredAlignment="right"
-    >
-      <Popover.Pane>
-        <BlockStack gap="200">
-          <div style={{ padding: "12px 12px 0" }}>
-            <BlockStack gap="200">
-              {ORDER_COLUMNS.map((column) => (
-                <Checkbox
-                  key={column.id}
-                  label={column.label}
-                  checked={draft.includes(column.id)}
-                  onChange={() => toggle(column.id)}
-                />
-              ))}
-            </BlockStack>
-          </div>
-          <div style={{ padding: "12px" }}>
-            <Button
+    <>
+      {/* s-popover is driven declaratively by the command API rather than an
+          `active` prop, so there is no open/close state to track here. */}
+      <s-button commandFor={POPOVER_ID} command="--show" onClick={() => setDraft(props.selected)}>
+        Columns
+      </s-button>
+      <s-popover id={POPOVER_ID} inlineSize="260px">
+        <s-box padding="base">
+          <s-stack direction="block" gap="base">
+            {ORDER_COLUMNS.map((column) => (
+              <s-checkbox
+                key={column.id}
+                label={column.label}
+                checked={draft.includes(column.id)}
+                onChange={() => toggle(column.id)}
+              />
+            ))}
+            <s-button
               variant="primary"
               disabled={draft.length === 0}
-              onClick={() => { props.onApply(draft); setOpen(false); }}
+              commandFor={POPOVER_ID}
+              command="--hide"
+              onClick={() => props.onApply(draft)}
             >
               Apply
-            </Button>
-          </div>
-        </BlockStack>
-      </Popover.Pane>
-    </Popover>
+            </s-button>
+          </s-stack>
+        </s-box>
+      </s-popover>
+    </>
   );
 }

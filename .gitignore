@@ -11,3 +11,14 @@ dist
 coverage
 exports
 .DS_Store
+
+# Shopify CLI local state
+.shopify
+.shopify.lock
+
+# Per-developer app configs (shopify.app.<name>.toml) from `pnpm app:link`
+# stay local; only the shared config is tracked.
+shopify.*.toml
+!shopify.app.toml
+!**/shopify.web.toml
+!**/shopify.extension.toml

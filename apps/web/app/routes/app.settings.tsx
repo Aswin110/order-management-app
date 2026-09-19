@@ -5,19 +5,6 @@ import type {
   LoaderFunctionArgs,
 } from "react-router";
 import { useLoaderData, useFetcher, useRouteError } from "react-router";
-import {
-  Page,
-  Layout,
-  Card,
-  Text,
-  Button,
-  Select,
-  TextField,
-  Banner,
-  BlockStack,
-  InlineStack,
-  Badge,
-} from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
@@ -100,173 +87,147 @@ export default function SettingsPage() {
   const [defaultCodStatus, setDefaultCodStatus] = useState(settings.defaultCodStatus);
 
   return (
-    <Page title="Settings">
-      <Layout>
-        {fetcher.data?.message ? (
-          <Layout.Section>
-            <Banner tone={fetcher.data.ok ? "success" : "critical"}>
-              <p>{fetcher.data.message}</p>
-            </Banner>
-          </Layout.Section>
-        ) : null}
+    <s-page heading="Settings">
+      {fetcher.data?.message ? (
+        <s-banner tone={fetcher.data.ok ? "success" : "critical"}>{fetcher.data.message}</s-banner>
+      ) : null}
 
-        <Layout.Section>
-          <BlockStack gap="400">
-            <Card>
-              <BlockStack gap="300">
-                <Text as="h2" variant="headingMd">Order settings</Text>
-                <TextField
-                  label="High-value threshold"
-                  type="number"
-                  autoComplete="off"
-                  value={threshold}
-                  onChange={setThreshold}
-                  helpText="Orders above this total are flagged as high value. Stored as a plain number and displayed with the order currency."
-                />
-                <InlineStack gap="300">
-                  <Select
-                    label="Default sorting"
-                    options={[
-                      { label: "Newest first", value: "orderedAt:desc" },
-                      { label: "Oldest first", value: "orderedAt:asc" },
-                      { label: "Highest total", value: "totalPrice:desc" },
-                      { label: "Lowest total", value: "totalPrice:asc" },
-                    ]}
-                    value={defaultSort}
-                    onChange={setDefaultSort}
-                  />
-                  <Select
-                    label="Default view"
-                    options={[{ label: "All orders", value: "" }, ...views.map((v) => ({ label: v.name, value: v.id }))]}
-                    value={defaultViewId}
-                    onChange={setDefaultViewId}
-                  />
-                  <TextField
-                    label="Rows per page"
-                    type="number"
-                    autoComplete="off"
-                    value={rowsPerPage}
-                    onChange={setRowsPerPage}
-                  />
-                </InlineStack>
-                <InlineStack>
-                  <Button
-                    variant="primary"
-                    onClick={() =>
-                      fetcher.submit(
-                        {
-                          intent: "orderSettings",
-                          highValueThreshold: threshold,
-                          defaultSort,
-                          defaultViewId,
-                          rowsPerPage,
-                        },
-                        { method: "post" },
-                      )
-                    }
-                  >
-                    Save order settings
-                  </Button>
-                </InlineStack>
-              </BlockStack>
-            </Card>
+      <s-section heading="Order settings">
+        <s-stack direction="block" gap="base">
+          <s-number-field
+            label="High-value threshold"
+            details="Orders above this total are flagged as high value. Stored as a plain number and displayed with the order currency."
+            value={threshold}
+            onChange={(event) => setThreshold(event.currentTarget.value)}
+          />
+          <s-grid gridTemplateColumns="repeat(auto-fit, minmax(180px, 1fr))" gap="base">
+            <s-select
+              label="Default sorting"
+              value={defaultSort}
+              onChange={(event) => setDefaultSort(event.currentTarget.value)}
+            >
+              <s-option value="orderedAt:desc">Newest first</s-option>
+              <s-option value="orderedAt:asc">Oldest first</s-option>
+              <s-option value="totalPrice:desc">Highest total</s-option>
+              <s-option value="totalPrice:asc">Lowest total</s-option>
+            </s-select>
+            <s-select
+              label="Default view"
+              value={defaultViewId}
+              onChange={(event) => setDefaultViewId(event.currentTarget.value)}
+            >
+              <s-option value="">All orders</s-option>
+              {views.map((v) => (
+                <s-option key={v.id} value={v.id}>{v.name}</s-option>
+              ))}
+            </s-select>
+            <s-number-field
+              label="Rows per page"
+              value={rowsPerPage}
+              onChange={(event) => setRowsPerPage(event.currentTarget.value)}
+            />
+          </s-grid>
+          <s-stack direction="inline">
+            <s-button
+              variant="primary"
+              onClick={() =>
+                fetcher.submit(
+                  {
+                    intent: "orderSettings",
+                    highValueThreshold: threshold,
+                    defaultSort,
+                    defaultViewId,
+                    rowsPerPage,
+                  },
+                  { method: "post" },
+                )
+              }
+            >
+              Save order settings
+            </s-button>
+          </s-stack>
+        </s-stack>
+      </s-section>
 
-            <Card>
-              <BlockStack gap="300">
-                <Text as="h2" variant="headingMd">COD workflow</Text>
-                <Select
-                  label="COD workflow"
-                  options={[
-                    { label: "Enabled", value: "true" },
-                    { label: "Disabled", value: "false" },
-                  ]}
-                  value={String(codEnabled)}
-                  onChange={(v) => setCodEnabled(v === "true")}
-                />
-                <Select
-                  label="Default COD status for new COD orders"
-                  options={[
-                    { label: "Pending", value: "PENDING" },
-                    { label: "Verified", value: "VERIFIED" },
-                  ]}
-                  value={defaultCodStatus}
-                  onChange={(v) => setDefaultCodStatus(v as never)}
-                />
-                <InlineStack>
-                  <Button
-                    variant="primary"
-                    onClick={() =>
-                      fetcher.submit(
-                        { intent: "codSettings", codEnabled: String(codEnabled), defaultCodStatus },
-                        { method: "post" },
-                      )
-                    }
-                  >
-                    Save COD settings
-                  </Button>
-                </InlineStack>
-              </BlockStack>
-            </Card>
+      <s-section heading="COD workflow">
+        <s-stack direction="block" gap="base">
+          <s-select
+            label="COD workflow"
+            value={String(codEnabled)}
+            onChange={(event) => setCodEnabled(event.currentTarget.value === "true")}
+          >
+            <s-option value="true">Enabled</s-option>
+            <s-option value="false">Disabled</s-option>
+          </s-select>
+          <s-select
+            label="Default COD status for new COD orders"
+            value={defaultCodStatus}
+            onChange={(event) => setDefaultCodStatus(event.currentTarget.value as never)}
+          >
+            <s-option value="PENDING">Pending</s-option>
+            <s-option value="VERIFIED">Verified</s-option>
+          </s-select>
+          <s-stack direction="inline">
+            <s-button
+              variant="primary"
+              onClick={() =>
+                fetcher.submit(
+                  { intent: "codSettings", codEnabled: String(codEnabled), defaultCodStatus },
+                  { method: "post" },
+                )
+              }
+            >
+              Save COD settings
+            </s-button>
+          </s-stack>
+        </s-stack>
+      </s-section>
 
-            <Card>
-              <BlockStack gap="300">
-                <Text as="h2" variant="headingMd">Table settings</Text>
-                <Text as="p" tone="subdued">
-                  Default columns are managed from the Orders page with the Columns picker; your selection is saved automatically for this shop.
-                </Text>
-              </BlockStack>
-            </Card>
+      <s-section heading="Table settings">
+        <s-paragraph color="subdued">
+          Default columns are managed from the Orders page with the Columns picker; your selection is saved automatically for this shop.
+        </s-paragraph>
+      </s-section>
 
-            <Card>
-              <BlockStack gap="300">
-                <Text as="h2" variant="headingMd">Exports</Text>
-                {exports.length === 0 ? (
-                  <Text as="p" tone="subdued">No exports yet. Use Export CSV on the Orders page.</Text>
-                ) : (
-                  <BlockStack gap="200">
-                    {exports.map((job) => (
-                      <InlineStack key={job.id} align="space-between" blockAlign="center">
-                        <InlineStack gap="200">
-                          <Badge
-                            tone={
-                              job.status === "COMPLETED" ? "success"
-                              : job.status === "FAILED" ? "critical"
-                              : "attention"
-                            }
-                          >
-                            {job.status}
-                          </Badge>
-                          <Text as="span">
-                            {new Date(job.createdAt).toLocaleString("en-IN")}
-                            {job.rowCount != null ? ` - ${job.rowCount} rows` : ""}
-                          </Text>
-                        </InlineStack>
-                        {job.status === "COMPLETED" ? (
-                          <a href={`/app/exports/${job.id}/download`} download>
-                            <Button size="slim">Download</Button>
-                          </a>
-                        ) : job.error ? (
-                          <Text as="span" tone="critical">{job.error}</Text>
-                        ) : null}
-                      </InlineStack>
-                    ))}
-                  </BlockStack>
-                )}
-              </BlockStack>
-            </Card>
+      <s-section heading="Exports">
+        {exports.length === 0 ? (
+          <s-paragraph color="subdued">No exports yet. Use Export CSV on the Orders page.</s-paragraph>
+        ) : (
+          <s-stack direction="block" gap="small-200">
+            {exports.map((job) => (
+              <s-stack key={job.id} direction="inline" gap="base" alignItems="center">
+                <s-badge
+                  tone={
+                    job.status === "COMPLETED" ? "success"
+                    : job.status === "FAILED" ? "critical"
+                    : "warning"
+                  }
+                >
+                  {job.status}
+                </s-badge>
+                <s-text>
+                  {new Date(job.createdAt).toLocaleString("en-IN")}
+                  {job.rowCount != null ? ` - ${job.rowCount} rows` : ""}
+                </s-text>
+                {job.status === "COMPLETED" ? (
+                  <s-button href={`/app/exports/${job.id}/download`} variant="secondary">
+                    Download
+                  </s-button>
+                ) : job.error ? (
+                  <s-text tone="critical">{job.error}</s-text>
+                ) : null}
+              </s-stack>
+            ))}
+          </s-stack>
+        )}
+      </s-section>
 
-            <Card>
-              <BlockStack gap="300">
-                <Text as="h2" variant="headingMd">Billing</Text>
-                <Text as="p" tone="subdued">
-                  Shopify Managed App Pricing will be attached here. Plans are kept configurable: Free (100 orders/month, basic filters) and Pro (unlimited orders, saved views, bulk actions, staff assignment, COD workflow, CSV exports).
-                </Text>
-              </BlockStack>
-            </Card>
-          </BlockStack>
-        </Layout.Section>
-      </Layout>
-    </Page>
+      <s-section heading="Billing">
+        <s-paragraph color="subdued">
+          Shopify Managed App Pricing will be attached here. Plans are kept configurable: Free (100 orders/month, basic filters) and Pro (unlimited orders, saved views, bulk actions, staff assignment, COD workflow, CSV exports).
+        </s-paragraph>
+      </s-section>
+    </s-page>
   );
 }
 
