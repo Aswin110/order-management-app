@@ -10,8 +10,8 @@ handle = "order-operations"
 web_directories = ["apps/web"]
 
 [access_scopes]
-# Minimum scopes for the order operations dashboard: read orders for the
-# dashboard/sync, write orders for bulk tag actions.
+# Orders are read live through the Admin GraphQL API; write_orders covers
+# bulk tag updates. There is no background sync, so no order webhooks.
 scopes = "read_orders,write_orders"
 
 [webhooks]
@@ -24,11 +24,6 @@ api_version = "2025-10"
   [[webhooks.subscriptions]]
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
-
-  # Handled by: /app/routes/webhooks.orders.tsx
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/orders"
-  topics = ["orders/create", "orders/updated", "orders/cancelled", "orders/fulfilled"]
 
   # Mandatory compliance topics for public apps
   [[webhooks.subscriptions]]

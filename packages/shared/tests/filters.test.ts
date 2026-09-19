@@ -5,12 +5,14 @@ describe("orderFiltersSchema", () => {
   it("applies defaults", () => {
     const f = orderFiltersSchema.parse({});
     expect(f.fulfillment).toBe("ANY");
-    expect(f.cod).toBe("ANY");
+    expect(f.financial).toBe("ANY");
     expect(f.dateRange).toBe("ANY");
-    expect(f.highValueOnly).toBe(false);
+    expect(f.tag).toBeUndefined();
+    expect(f.search).toBeUndefined();
   });
   it("rejects invalid enum values", () => {
-    expect(() => orderFiltersSchema.parse({ cod: "BOGUS" })).toThrow();
+    expect(() => orderFiltersSchema.parse({ fulfillment: "BOGUS" })).toThrow();
+    expect(() => orderFiltersSchema.parse({ dateRange: "YESTERDAY" })).toThrow();
   });
 });
 
@@ -20,11 +22,11 @@ describe("savedViewInputSchema", () => {
   });
   it("accepts a complete view", () => {
     const v = savedViewInputSchema.parse({
-      name: "Today's COD",
-      filters: { cod: "COD", dateRange: "TODAY", fulfillment: "UNFULFILLED" },
-      columns: ["name", "codStatus"],
+      name: "Today's unfulfilled",
+      filters: { fulfillment: "UNFULFILLED", dateRange: "TODAY" },
+      columns: ["name", "items"],
     });
-    expect(v.name).toBe("Today's COD");
-    expect(v.filters.cod).toBe("COD");
+    expect(v.name).toBe("Today's unfulfilled");
+    expect(v.filters.fulfillment).toBe("UNFULFILLED");
   });
 });

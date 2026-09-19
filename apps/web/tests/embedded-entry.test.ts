@@ -4,7 +4,9 @@ import { loader as appIndex } from "../app/routes/app._index";
 
 const PARAMS = "shop=aswin-test-store.myshopify.com&host=YWJjMTIz&embedded=1&id_token=tok";
 
-const call = async (loader: any, url: string) => {
+type Loader = (args: { request: Request; params: object; context: object }) => unknown;
+
+const call = async (loader: Loader, url: string) => {
   try {
     const r = await loader({ request: new Request(url), params: {}, context: {} });
     return r as Response;

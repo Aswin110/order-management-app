@@ -9,8 +9,8 @@ export function isValidCodStatus(value: string): value is CodStatus {
 
 /**
  * Manually set the COD verification status for one order, scoped to the
- * shop. Structured so a WhatsApp (or other) provider can hook in later -
- * e.g. notify on status change - without changing this API.
+ * shop. The overlay row is created on first use - the order never needs
+ * to be "synced" first.
  */
 export async function setCodStatus(options: {
   shopId: string;
@@ -21,14 +21,9 @@ export async function setCodStatus(options: {
   if (!isValidCodStatus(codStatus)) {
     throw new Error(`Invalid COD status: ${codStatus}`);
   }
-  const order = await prisma.orderMetadata.findUnique({
+  return prisma.orderOpsMeta.upsert({
     where: { shopId_shopifyOrderId: { shopId, shopifyOrderId } },
-  });
-  if (!order) {
-    throw new Error("Order not found. It may not have synced yet.");
-  }
-  return prisma.orderMetadata.update({
-    where: { id: order.id },
-    data: { codStatus },
+    create: { shopId, shopifyOrderId, codStatus },
+    update: { codStatus },
   });
 }

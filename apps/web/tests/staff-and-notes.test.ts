@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   staff: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
-  orderMetadata: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  orderOpsMeta: { upsert: vi.fn(), updateMany: vi.fn() },
   orderAssignment: { create: vi.fn() },
-  orderNote: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), delete: vi.fn() },
+  orderNote: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), delete: vi.fn(), count: vi.fn() },
   $transaction: vi.fn(async (fn: (tx: typeof mocks) => unknown) => fn(mocks)),
 }));
 
@@ -18,9 +18,8 @@ describe("staff assignment", () => {
 
   it("assigns an order to an active staff member of the same shop", async () => {
     mocks.staff.findFirst.mockResolvedValue({ id: "staff-1" });
-    mocks.orderMetadata.findUnique.mockResolvedValue({ id: "row-1" });
     mocks.orderAssignment.create.mockResolvedValue({});
-    mocks.orderMetadata.update.mockResolvedValue({});
+    mocks.orderOpsMeta.upsert.mockResolvedValue({});
 
     await assignOrder({ shopId: "shop-1", shopifyOrderId: "gid://shopify/Order/1", staffId: "staff-1" });
 
@@ -28,8 +27,11 @@ describe("staff assignment", () => {
       expect.objectContaining({ where: { id: "staff-1", shopId: "shop-1", active: true } }),
     );
     expect(mocks.orderAssignment.create).toHaveBeenCalled();
-    expect(mocks.orderMetadata.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { assignedStaffId: "staff-1" } }),
+    expect(mocks.orderOpsMeta.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ assignedStaffId: "staff-1" }),
+        update: { assignedStaffId: "staff-1" },
+      }),
     );
   });
 
@@ -48,18 +50,22 @@ describe("staff assignment", () => {
 describe("internal notes", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("creates a note and updates the denormalized preview in one transaction", async () => {
+  it("creates a note and the overlay preview in one transaction", async () => {
     mocks.orderNote.create.mockResolvedValue({ id: "note-1" });
-    mocks.orderMetadata.updateMany.mockResolvedValue({ count: 1 });
+    mocks.orderOpsMeta.upsert.mockResolvedValue({});
     await addOrderNote({
       shopId: "shop-1",
       shopifyOrderId: "gid://shopify/Order/1",
       content: "Call customer before shipping",
     });
     expect(mocks.$transaction).toHaveBeenCalled();
-    expect(mocks.orderMetadata.updateMany).toHaveBeenCalledWith(
+    expect(mocks.orderOpsMeta.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        create: expect.objectContaining({
+          latestNote: "Call customer before shipping",
+          notesCount: 1,
+        }),
+        update: expect.objectContaining({
           latestNote: "Call customer before shipping",
           notesCount: { increment: 1 },
         }),
@@ -73,16 +79,17 @@ describe("internal notes", () => {
     ).rejects.toThrow("cannot be empty");
   });
 
-  it("deletes a note and fixes the preview", async () => {
+  it("deletes a note and recomputes the overlay preview", async () => {
     mocks.orderNote.findFirst
       .mockResolvedValueOnce({ id: "note-1", shopifyOrderId: "gid://shopify/Order/1" })
       .mockResolvedValueOnce({ content: "next note" });
     mocks.orderNote.delete.mockResolvedValue({});
-    mocks.orderMetadata.updateMany.mockResolvedValue({ count: 1 });
+    mocks.orderNote.count.mockResolvedValue(1);
+    mocks.orderOpsMeta.updateMany.mockResolvedValue({ count: 1 });
     await deleteOrderNote("shop-1", "note-1");
-    expect(mocks.orderMetadata.updateMany).toHaveBeenCalledWith(
+    expect(mocks.orderOpsMeta.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ latestNote: "next note", notesCount: { decrement: 1 } }),
+        data: { latestNote: "next note", notesCount: 1 },
       }),
     );
   });

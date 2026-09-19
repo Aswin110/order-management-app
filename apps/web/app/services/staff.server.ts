@@ -25,7 +25,10 @@ export async function setStaffActive(shopId: string, staffId: string, active: bo
   return prisma.staff.update({ where: { id: staff.id }, data: { active } });
 }
 
-/** Assign (or reassign) an order to a staff member, recording assignment history. */
+/**
+ * Assign (or reassign) an order to a staff member. Works on any Shopify
+ * order id - the overlay row is created on first use, no sync required.
+ */
 export async function assignOrder(options: {
   shopId: string;
   shopifyOrderId: string;
@@ -34,22 +37,19 @@ export async function assignOrder(options: {
   const { shopId, shopifyOrderId, staffId } = options;
   const staff = await prisma.staff.findFirst({ where: { id: staffId, shopId, active: true } });
   if (!staff) throw new Error("Staff member not found");
-  const order = await prisma.orderMetadata.findUnique({
-    where: { shopId_shopifyOrderId: { shopId, shopifyOrderId } },
-  });
-  if (!order) throw new Error("Order not found. It may not have synced yet.");
 
   return prisma.$transaction(async (tx) => {
     await tx.orderAssignment.create({ data: { shopId, shopifyOrderId, staffId } });
-    return tx.orderMetadata.update({
-      where: { id: order.id },
-      data: { assignedStaffId: staffId },
+    return tx.orderOpsMeta.upsert({
+      where: { shopId_shopifyOrderId: { shopId, shopifyOrderId } },
+      create: { shopId, shopifyOrderId, assignedStaffId: staffId },
+      update: { assignedStaffId: staffId },
     });
   });
 }
 
 export async function unassignOrder(options: { shopId: string; shopifyOrderId: string }) {
-  return prisma.orderMetadata.updateMany({
+  return prisma.orderOpsMeta.updateMany({
     where: { shopId: options.shopId, shopifyOrderId: options.shopifyOrderId },
     data: { assignedStaffId: null },
   });
