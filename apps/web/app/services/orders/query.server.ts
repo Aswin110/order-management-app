@@ -5,4 +5,4 @@ export {
   buildOrderBy,
   queryOrders,
   type OrderPage,
-} from "@order-operations/shared";
+} from "@order-operations/shared/order-query";

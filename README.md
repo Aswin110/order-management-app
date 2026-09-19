@@ -41,24 +41,74 @@ extensions/   Shopify app extensions (empty for MVP)
    pnpm install
    ```
 
-2. Configure environment. Copy `.env.example` to `.env` in the repo root and fill in:
+2. Configure environment. Copy `.env.example` to `.env` in the repo root. For local
+   development the only variable you need to set is:
 
-   - `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` - from the app in the Shopify Dev Dashboard
-   - `SHOPIFY_APP_URL` - your tunnel/host URL
    - `DATABASE_URL` - PostgreSQL connection string
-   - `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`
+
+   Everything else is optional locally: `shopify app dev` injects `SHOPIFY_API_KEY`,
+   `SHOPIFY_API_SECRET` and `SHOPIFY_APP_URL`, access scopes come from
+   `[access_scopes]` in `shopify.app.toml`, and the Redis/export settings
+   fall back to `localhost:6379` and `<cwd>/exports`. See `.env.example` for the
+   full list to set in production.
 
 3. Create the database schema:
 
    ```bash
-   pnpm setup        # prisma generate + migrate deploy
+   pnpm run setup    # prisma generate + migrate deploy ("run" is required: `pnpm setup` is a built-in pnpm command)
    ```
 
-4. Link the Shopify app config (fills `client_id` in `apps/web/shopify.app.toml`):
+4. Link your own Shopify dev app. This is interactive - choose **Create a new
+   app**, then pick a dev store. `--config dev-<yourname>` writes
+   `shopify.app.dev-<yourname>.toml`, which is gitignored, so your personal
+   `client_id` never lands in the shared config:
 
    ```bash
-   cd apps/web && pnpm shopify app config link
+   pnpm app:link --config dev-aswin
+   pnpm app:use dev-aswin
    ```
+
+   Then copy the `[access_scopes]` and `[webhooks]` blocks from the tracked
+   `shopify.app.toml` into your new dev config, and add
+   `web_directories = ["apps/web"]`. A freshly created app has empty scopes and
+   no `orders/*` subscriptions; without them the dashboard loads but never
+   updates.
+
+5. Request **protected customer data** access for your dev app in the Developer
+   Dashboard (App > API access > Protected customer data access). Order payloads
+   contain customer PII, so without it `shopify app dev` fails with "This app is
+   not approved to subscribe to webhook topics containing protected customer
+   data."
+
+## Shopify commands
+
+`shopify.app.toml` lives at the **workspace root**, not in `apps/web`. That is
+deliberate, and it is what makes this work as a pnpm monorepo:
+
+- The CLI runs `npm prefix` from the config's directory and then looks for a
+  lockfile *in that directory only*, without walking up. With the config in
+  `apps/web` (no lockfile there) it falls back to npm, and `npm install` then
+  dies on `workspace:*` with `EUNSUPPORTEDPROTOCOL`. At the root it finds
+  `pnpm-lock.yaml` and correctly picks pnpm.
+- The CLI skips dependency installation entirely when the app uses workspaces,
+  which it detects via `pnpm-workspace.yaml` next to the config - again, root only.
+- `web_directories = ["apps/web"]` points the CLI at the web process, whose
+  `apps/web/shopify.web.toml` stays where it is.
+
+So every command just runs from the root:
+
+| Root command | Runs |
+| --- | --- |
+| `pnpm dev` | `shopify app dev` |
+| `pnpm app:link` | `shopify app config link` |
+| `pnpm app:use` | `shopify app config use` |
+| `pnpm app:info` | `shopify app info` |
+| `pnpm app:deploy` | `shopify app deploy` |
+| `pnpm app:generate` | `shopify app generate` |
+| `pnpm app:env` | `shopify app env` |
+| `pnpm shopify <args>` | the raw CLI |
+
+Extra flags are forwarded: `pnpm app:link --config dev-aswin`.
 
 ## Running locally
 
@@ -89,8 +139,8 @@ Tests use mocked database/Shopify boundaries, so they run without PostgreSQL or 
 ## Deployment
 
 1. Provision PostgreSQL and Redis.
-2. Set all env vars from `.env.example` plus `SESSION_SECRET`.
-3. `pnpm install && pnpm setup && pnpm build`
+2. Set the production env vars listed in `.env.example`.
+3. `pnpm install && pnpm run setup && pnpm build`
 4. Run the web app: `pnpm --filter @order-operations/web run start`
 5. Run the worker: `pnpm --filter @order-operations/worker run start`
 6. Update the app URL and webhook endpoints in the Dev Dashboard to your production URL.

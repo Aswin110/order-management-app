@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./order-query": "./src/order-query.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

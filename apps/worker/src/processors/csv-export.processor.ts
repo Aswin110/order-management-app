@@ -3,13 +3,12 @@ import { Job } from "bullmq";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { prisma } from "@order-operations/db";
+import { buildOrderWhere, buildOrderBy } from "@order-operations/shared/order-query";
 import {
   QUEUE_NAMES,
   JOB_NAMES,
   CSV_HEADERS,
   orderToCsvRow,
-  buildOrderWhere,
-  buildOrderBy,
   orderFiltersSchema,
   sortSchema,
   type GenerateCsvJob,

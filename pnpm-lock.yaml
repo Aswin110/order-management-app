@@ -42,12 +42,6 @@ importers:
       '@shopify/app-bridge-react':
         specifier: ^4.2.4
         version: 4.2.13(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@shopify/polaris':
-        specifier: ^12.27.0
-        version: 12.27.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@shopify/polaris-icons':
-        specifier: ^9.3.1
-        version: 9.3.1(react@18.3.1)
       '@shopify/shopify-app-react-router':
         specifier: ^1.1.0
         version: 1.2.1(react-dom@18.3.1(react@18.3.1))(react-router@7.18.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
@@ -195,6 +189,9 @@ importers:
       '@types/node':
         specifier: ^25.5.2
         version: 25.9.8
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
       prisma:
         specifier: ^6.16.3
         version: 6.19.3(typescript@5.9.3)
@@ -350,10 +347,6 @@ packages:
     engines: {node: '>=6.9.0'}
     peerDependencies:
       '@babel/core': ^7.0.0-0
-
-  '@babel/runtime@7.29.7':
-    resolution: {integrity: sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw==}
-    engines: {node: '>=6.9.0'}
 
   '@babel/runtime@8.0.5':
     resolution: {integrity: sha512-7NK+Lz3spQ52XsUGTxIEVU4jYN2/dIaX8sTxRFAUtYmttYZnVh3aehiihv+/Gb7+duMNHl2OrFcBQRyOHScxpg==}
@@ -1467,35 +1460,8 @@ packages:
     engines: {node: '>=18.12.0'}
     deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
-  '@shopify/polaris-icons@8.11.1':
-    resolution: {integrity: sha512-2HLzvJWMejKIwS5P2bs7k5CAjBKwPnD/iy9ncPzcgqRjmFInBXLtUXFQhPWDw6JwXzb1ZjNQK/ssTctcfz87Sw==}
-    engines: {node: ^16.17.0 || >=18.12.0}
-    peerDependencies:
-      react: '*'
-    peerDependenciesMeta:
-      react:
-        optional: true
-
-  '@shopify/polaris-icons@9.3.1':
-    resolution: {integrity: sha512-16BIFAT93LJ8X4YRXz5cR9ZPHeErMg3DYS0gyTPNPkd0E5IBPoTxPINjn2b4Mr9Sc1x4RfI4AqPcV8ut0D1J5w==}
-    engines: {node: '>=20.10.0'}
-    peerDependencies:
-      react: '*'
-
-  '@shopify/polaris-tokens@8.10.0':
-    resolution: {integrity: sha512-y4PDtRbFKGHwA6Lu7a3L4N9SDP6gZv4tw6u0viumtcXcbF0T2j1xPmyuJZNc9c7vmhNSARCg27NGQFpPgxuaEg==}
-    engines: {node: ^16.17.0 || >=18.12.0}
-
   '@shopify/polaris-types@1.0.1':
     resolution: {integrity: sha512-BZs47atXnaOVqFrCfTeXc6Vz8Vk8Vpj9o3nx/lYTvy9i4pPvd4K4mRKIhjrer2NWITCMvY6+nZ6GE1I9Qfq4rQ==}
-
-  '@shopify/polaris@12.27.0':
-    resolution: {integrity: sha512-Y8yus6iEjcfW2ZtEJtlqxbWeDJqTX3S/MOLH4GWRvU5gFYJQhlaHaETs0+OimbhEpO95mXbY8qB+KnIJaVBHwA==}
-    engines: {node: ^16.17.0 || >=18.12.0}
-    deprecated: 'Polaris React is deprecated and no longer maintained. For building Shopify admin experiences, use Polaris web components: https://shopify.dev/docs/api/polaris — archived docs for this package: https://shopify.github.io/polaris-react-archive/'
-    peerDependencies:
-      react: ^18.0.0
-      react-dom: ^18.0.0
 
   '@shopify/shopify-api@11.14.1':
     resolution: {integrity: sha512-5VyQZyNhMN2PJLosA6OytYL1ENmdpqslcTcr1jFjGn6sEuxhXtLav+I74ygdL2iTdjEud4aDBZycgDVxPIH+uw==}
@@ -1569,11 +1535,6 @@ packages:
     resolution: {integrity: sha512-MEe3UeoENYVFXzoXEWsvcpg6ZvlrFNlOQ7EOsvhI3CfAXwzPfO8Qwuxd40nepsYKqyyVQnTdEfv68q91yLcKrQ==}
     peerDependencies:
       '@types/react': ^18.0.0
-
-  '@types/react-transition-group@4.4.12':
-    resolution: {integrity: sha512-8TV6R3h2j7a91c+1DXdJi3Syo69zzIZbz7Lg5tORM5LEJG7X/E6a1V3drRyBRZq7/utz7A+c4OgYLiLcYGHG6w==}
-    peerDependencies:
-      '@types/react': '*'
 
   '@types/react@18.3.31':
     resolution: {integrity: sha512-vfEqpXTvwT91yhmwdfouStN2hSKwTvyRs8qpLfADyrq/kxDw0hZM7Wk9Ug1FELj8hIby+S/+kQCSRFF32nv2Qw==}
@@ -2240,10 +2201,6 @@ packages:
     resolution: {integrity: sha512-HOJkrhaYsweh+W+e74Yn7YStZOilkoPb6fycpwNLKzSPtruFs48nYis0zy5yJz1+ktUhHxoRDJ27RQAWLIJVJw==}
     engines: {node: '>=16.0.0'}
 
-  deepmerge@4.3.1:
-    resolution: {integrity: sha512-3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==}
-    engines: {node: '>=0.10.0'}
-
   define-data-property@1.1.4:
     resolution: {integrity: sha512-rBMvIzlpA8v6E+SJZoo++HAYqsLrkg7MSfIinMPFhmkorw7X+dOXVJQs+QT69zGkzMyfDnIMN2Wid1+NbL3T+A==}
     engines: {node: '>= 0.4'}
@@ -2297,9 +2254,6 @@ packages:
   doctrine@3.0.0:
     resolution: {integrity: sha512-yS+Q5i3hBf7GBkd4KG8a7eBNNWNGLTaEwwYWUijIYM7zrlYDM0BFXHjjPWlWZ1Rg7UaddZeIDmi9jF3HmqiQ2w==}
     engines: {node: '>=6.0.0'}
-
-  dom-helpers@5.2.1:
-    resolution: {integrity: sha512-nRCa7CK3VTrM2NmGkIy4cbK7IZlgBE/PYMn55rrXefr5xXDP0LdtfPnblFDoVdcAfslJ7or6iqAUnx0CCGIWQA==}
 
   dot-case@3.0.4:
     resolution: {integrity: sha512-Kv5nKlh6yRrdrGvxeJ2e5y2eRUpkUosIW4A2AS38zwSz27zu7ufDwQPi5Jhs3XAlGNetl3bmnGhQsMtkKJnj3w==}
@@ -3558,9 +3512,6 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
-  react-fast-compare@3.2.2:
-    resolution: {integrity: sha512-nsO+KSNgo1SbJqJEYRE9ERzo7YtYbou/OqjSQKxV7jcKox7+usiUVZOAC+XnDOABXggQTno0Y1CpVnuWEc1boQ==}
-
   react-is@16.13.1:
     resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
 
@@ -3577,12 +3528,6 @@ packages:
     peerDependenciesMeta:
       react-dom:
         optional: true
-
-  react-transition-group@4.4.5:
-    resolution: {integrity: sha512-pZcd1MCJoiKiBR2NRxeCRg13uCXbydPnmB4EOeRrY7480qNWO8IIgQG6zlDkm6uRMsURXPuKq0GWtiM59a5Q6g==}
-    peerDependencies:
-      react: '>=16.6.0'
-      react-dom: '>=16.6.0'
 
   react@18.3.1:
     resolution: {integrity: sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ==}
@@ -4437,8 +4382,6 @@ snapshots:
       '@babel/plugin-transform-typescript': 7.29.9(@babel/core@7.29.7)
     transitivePeerDependencies:
       - supports-color
-
-  '@babel/runtime@7.29.7': {}
 
   '@babel/runtime@8.0.5': {}
 
@@ -5627,31 +5570,7 @@ snapshots:
 
   '@shopify/network@3.3.0': {}
 
-  '@shopify/polaris-icons@8.11.1(react@18.3.1)':
-    optionalDependencies:
-      react: 18.3.1
-
-  '@shopify/polaris-icons@9.3.1(react@18.3.1)':
-    dependencies:
-      react: 18.3.1
-
-  '@shopify/polaris-tokens@8.10.0':
-    dependencies:
-      deepmerge: 4.3.1
-
   '@shopify/polaris-types@1.0.1': {}
-
-  '@shopify/polaris@12.27.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@shopify/polaris-icons': 8.11.1(react@18.3.1)
-      '@shopify/polaris-tokens': 8.10.0
-      '@types/react': 18.3.31
-      '@types/react-dom': 18.3.7(@types/react@18.3.31)
-      '@types/react-transition-group': 4.4.12(@types/react@18.3.31)
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-      react-fast-compare: 3.2.2
-      react-transition-group: 4.4.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
   '@shopify/shopify-api@11.14.1':
     dependencies:
@@ -5749,10 +5668,6 @@ snapshots:
   '@types/prop-types@15.7.15': {}
 
   '@types/react-dom@18.3.7(@types/react@18.3.31)':
-    dependencies:
-      '@types/react': 18.3.31
-
-  '@types/react-transition-group@4.4.12(@types/react@18.3.31)':
     dependencies:
       '@types/react': 18.3.31
 
@@ -6460,8 +6375,6 @@ snapshots:
 
   deepmerge-ts@7.1.5: {}
 
-  deepmerge@4.3.1: {}
-
   define-data-property@1.1.4:
     dependencies:
       es-define-property: 1.0.1
@@ -6503,11 +6416,6 @@ snapshots:
   doctrine@3.0.0:
     dependencies:
       esutils: 2.0.3
-
-  dom-helpers@5.2.1:
-    dependencies:
-      '@babel/runtime': 7.29.7
-      csstype: 3.2.3
 
   dot-case@3.0.4:
     dependencies:
@@ -7963,8 +7871,6 @@ snapshots:
       react: 18.3.1
       scheduler: 0.23.2
 
-  react-fast-compare@3.2.2: {}
-
   react-is@16.13.1: {}
 
   react-refresh@0.14.2: {}
@@ -7975,15 +7881,6 @@ snapshots:
       react: 18.3.1
       set-cookie-parser: 2.7.2
     optionalDependencies:
-      react-dom: 18.3.1(react@18.3.1)
-
-  react-transition-group@4.4.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
-    dependencies:
-      '@babel/runtime': 7.29.7
-      dom-helpers: 5.2.1
-      loose-envify: 1.4.0
-      prop-types: 15.8.1
-      react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
   react@18.3.1:

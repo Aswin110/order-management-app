@@ -4,6 +4,11 @@ client_id = ""
 name = "Order Operations"
 handle = "order-operations"
 
+# The web process lives in apps/web; this file stays at the workspace root so
+# the Shopify CLI detects pnpm (pnpm-lock.yaml) and the workspace
+# (pnpm-workspace.yaml), both of which it only looks for beside this file.
+web_directories = ["apps/web"]
+
 [access_scopes]
 # Minimum scopes for the order operations dashboard: read orders for the
 # dashboard/sync, write orders for bulk tag actions.

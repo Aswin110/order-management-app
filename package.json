@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "pnpm -r run build",
-    "dev": "pnpm --filter @order-operations/web run dev",
+    "dev": "shopify app dev",
     "dev:worker": "pnpm --filter @order-operations/worker run dev",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
@@ -16,7 +16,14 @@
     "db:generate": "pnpm --filter @order-operations/db run generate",
     "db:migrate": "pnpm --filter @order-operations/db run migrate:deploy",
     "db:push": "pnpm --filter @order-operations/db run push",
-    "setup": "pnpm db:generate && pnpm db:migrate"
+    "setup": "pnpm db:generate && pnpm db:migrate",
+    "shopify": "shopify",
+    "app:link": "shopify app config link",
+    "app:use": "shopify app config use",
+    "app:info": "shopify app info",
+    "app:deploy": "shopify app deploy",
+    "app:generate": "shopify app generate",
+    "app:env": "shopify app env"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

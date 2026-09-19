@@ -5,25 +5,6 @@ import type {
   LoaderFunctionArgs,
 } from "react-router";
 import { useLoaderData, useNavigate, useFetcher, useSearchParams, useRouteError } from "react-router";
-import {
-  Page,
-  Layout,
-  Card,
-  IndexTable,
-  Filters,
-  ChoiceList,
-  Pagination,
-  Text,
-  Badge,
-  InlineStack,
-  BlockStack,
-  Modal,
-  TextField,
-  Select,
-  EmptyState,
-  Banner,
-  useIndexResourceState,
-} from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import {
   ORDER_COLUMNS,
@@ -194,7 +175,7 @@ type LoaderData = ReturnType<typeof useLoaderData<typeof loader>>;
 function cellFor(column: OrderColumnId, order: LoaderData["orders"][number]) {
   switch (column) {
     case "name":
-      return <Text as="span" variant="bodyMd" fontWeight="semibold">{order.name}</Text>;
+      return <s-text type="strong">{order.name}</s-text>;
     case "orderedAt":
       return new Date(order.orderedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
     case "customerName":
@@ -215,11 +196,11 @@ function cellFor(column: OrderColumnId, order: LoaderData["orders"][number]) {
       return `${order.itemCount} item${order.itemCount === 1 ? "" : "s"}`;
     case "tags":
       return order.tags.length ? (
-        <InlineStack gap="100">{order.tags.slice(0, 3).map((t) => <Badge key={t}>{t}</Badge>)}</InlineStack>
+        <s-stack direction="inline" gap="small-500">{order.tags.slice(0, 3).map((t) => <s-badge key={t} tone="neutral">{t}</s-badge>)}</s-stack>
       ) : "-";
     case "notes":
       return order.latestNote ? (
-        <Text as="span" tone="subdued" truncate>{order.latestNote}</Text>
+        <s-text color="subdued">{order.latestNote}</s-text>
       ) : "-";
     case "shippingAddress": {
       const a = order.shippingAddress as { city?: string; provinceCode?: string } | null;
@@ -240,6 +221,17 @@ function cellFor(column: OrderColumnId, order: LoaderData["orders"][number]) {
 
 const SORTABLE: OrderColumnId[] = ["name", "orderedAt", "customerName", "totalPrice", "itemCount"];
 
+const BULK_MODAL = "bulk-action-modal";
+const SAVE_VIEW_MODAL = "save-view-modal";
+
+const BULK_TITLES: Record<string, string> = {
+  addTag: "Add tag",
+  removeTag: "Remove tag",
+  addNote: "Add internal note",
+  assign: "Assign staff",
+  cod: "Mark COD status",
+};
+
 export default function OrdersPage() {
   const data = useLoaderData<typeof loader>();
   const navigate = useNavigate();
@@ -253,8 +245,8 @@ export default function OrdersPage() {
   const [noteValue, setNoteValue] = useState("");
   const [staffValue, setStaffValue] = useState("");
   const [codValue, setCodValue] = useState("VERIFIED");
-  const [saveViewOpen, setSaveViewOpen] = useState(false);
   const [viewName, setViewName] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const navigateWith = useCallback(
     (overrides: Record<string, string | undefined>) => {
@@ -265,8 +257,8 @@ export default function OrdersPage() {
         if (value === undefined || value === "" || value === "ANY") params.delete(key);
         else params.set(key, value);
       }
-      const s = params.toString();
-      navigate(`/app/orders${s ? `?${s}` : ""}`);
+      const next = params.toString();
+      navigate(`/app/orders${next ? `?${next}` : ""}`);
     },
     [navigate, searchParams],
   );
@@ -280,12 +272,17 @@ export default function OrdersPage() {
     [navigateWith],
   );
 
-  const { selectedResources, allResourcesSelected, handleSelectionChange } =
-    useIndexResourceState(data.orders as never);
+  // s-table has no built-in selection model, so selection is tracked locally.
+  const allSelected = data.orders.length > 0 && selectedIds.length === data.orders.length;
+  const toggleAll = () => setSelectedIds(allSelected ? [] : data.orders.map((o) => o.id));
+  const toggleRow = (id: string) =>
+    setSelectedIds((current) =>
+      current.includes(id) ? current.filter((c) => c !== id) : [...current, id],
+    );
 
   const selectedOrderRows = useMemo(
-    () => data.orders.filter((o) => selectedResources.includes(o.id as never)),
-    [data.orders, selectedResources],
+    () => data.orders.filter((o) => selectedIds.includes(o.id)),
+    [data.orders, selectedIds],
   );
 
   const runBulk = (payload: BulkActionPayload) => {
@@ -293,7 +290,7 @@ export default function OrdersPage() {
       {
         intent: "bulk",
         bulkAction: JSON.stringify(payload),
-        orderIds: JSON.stringify(selectedResources),
+        orderIds: JSON.stringify(selectedIds),
         idKind: "metadata",
       },
       { method: "post" },
@@ -311,30 +308,11 @@ export default function OrdersPage() {
     setNoteValue("");
   };
 
-  const bulkActions = [
-    { content: "Add tag", onAction: () => setPendingBulk("addTag") },
-    { content: "Remove tag", onAction: () => setPendingBulk("removeTag") },
-    { content: "Add note", onAction: () => setPendingBulk("addNote") },
-    { content: "Assign staff", onAction: () => setPendingBulk("assign") },
-    { content: "Mark COD status", onAction: () => setPendingBulk("cod") },
-    {
-      content: "Unassign staff",
-      onAction: () => runBulk({ type: "UNASSIGN_STAFF" }),
-    },
-    {
-      content: "Print selected",
-      onAction: () =>
-        navigate(`/app/print?ids=${selectedResources.join(",")}`),
-    },
-    {
-      content: "Open in Shopify Admin",
-      onAction: () => {
-        selectedOrderRows.slice(0, 10).forEach((o) =>
-          window.open(adminOrderUrl(data.shopDomain, o.shopifyOrderId), "_blank"),
-        );
-      },
-    },
-  ];
+  const applyDisabled =
+    (pendingBulk === "addTag" || pendingBulk === "removeTag") ? !tagValue.trim()
+    : pendingBulk === "addNote" ? !noteValue.trim()
+    : pendingBulk === "assign" ? !staffValue
+    : false;
 
   const appliedFilters: Array<{ key: string; label: string; onRemove: () => void }> = [];
   const f = data.filters;
@@ -347,202 +325,76 @@ export default function OrdersPage() {
   if (f.tag) appliedFilters.push({ key: "tag", label: `Tag: ${f.tag}`, onRemove: () => navigateWith({ tag: undefined }) });
   if (f.assigned !== "ANY") appliedFilters.push({ key: "assigned", label: f.assigned === "ASSIGNED" ? "Assigned" : "Unassigned", onRemove: () => navigateWith({ assigned: undefined }) });
   if (f.staffId) {
-    const staffName = data.staff.find((s) => s.id === f.staffId)?.name ?? "staff";
+    const staffName = data.staff.find((st) => st.id === f.staffId)?.name ?? "staff";
     appliedFilters.push({ key: "staff", label: `Staff: ${staffName}`, onRemove: () => navigateWith({ staff: undefined }) });
   }
   if (f.dateRange !== "ANY") appliedFilters.push({ key: "range", label: f.dateRange.replace(/_/g, " ").toLowerCase(), onRemove: () => navigateWith({ range: undefined }) });
 
-  const filterConfigs = [
-    {
-      key: "fulfillment",
-      label: "Fulfillment",
-      filter: (
-        <ChoiceList
-          title="Fulfillment"
-          titleHidden
-          choices={[
-            { label: "Any", value: "ANY" },
-            { label: "Fulfilled", value: "FULFILLED" },
-            { label: "Unfulfilled", value: "UNFULFILLED" },
-          ]}
-          selected={[f.fulfillment]}
-          onChange={(v) => navigateWith({ fulfillment: v[0] })}
-        />
-      ),
-      shortcut: true,
-    },
-    {
-      key: "financial",
-      label: "Payment status",
-      filter: (
-        <ChoiceList
-          title="Payment status"
-          titleHidden
-          choices={[
-            { label: "Any", value: "ANY" },
-            { label: "Paid", value: "PAID" },
-            { label: "Pending payment", value: "PENDING" },
-          ]}
-          selected={[f.financial]}
-          onChange={(v) => navigateWith({ financial: v[0] })}
-        />
-      ),
-      shortcut: true,
-    },
-    {
-      key: "cod",
-      label: "COD",
-      filter: (
-        <ChoiceList
-          title="COD"
-          titleHidden
-          choices={[
-            { label: "Any", value: "ANY" },
-            { label: "COD orders", value: "COD" },
-            { label: "Pending COD verification", value: "COD_PENDING" },
-            { label: "Verified COD", value: "COD_VERIFIED" },
-            { label: "Not COD", value: "NOT_COD" },
-          ]}
-          selected={[f.cod]}
-          onChange={(v) => navigateWith({ cod: v[0] })}
-        />
-      ),
-      shortcut: true,
-    },
-    {
-      key: "range",
-      label: "Date",
-      filter: (
-        <ChoiceList
-          title="Date"
-          titleHidden
-          choices={[
-            { label: "Any time", value: "ANY" },
-            { label: "Today", value: "TODAY" },
-            { label: "Last 7 days", value: "LAST_7_DAYS" },
-            { label: "Last 30 days", value: "LAST_30_DAYS" },
-          ]}
-          selected={[f.dateRange]}
-          onChange={(v) => navigateWith({ range: v[0] })}
-        />
-      ),
-      shortcut: true,
-    },
-    {
-      key: "assigned",
-      label: "Assignment",
-      filter: (
-        <ChoiceList
-          title="Assignment"
-          titleHidden
-          choices={[
-            { label: "Any", value: "ANY" },
-            { label: "Assigned", value: "ASSIGNED" },
-            { label: "Unassigned", value: "UNASSIGNED" },
-          ]}
-          selected={[f.assigned]}
-          onChange={(v) => navigateWith({ assigned: v[0] })}
-        />
-      ),
-    },
-    {
-      key: "staff",
-      label: "Staff member",
-      filter: (
-        <ChoiceList
-          title="Staff member"
-          titleHidden
-          choices={data.staff.map((s) => ({ label: s.name, value: s.id }))}
-          selected={f.staffId ? [f.staffId] : []}
-          onChange={(v) => navigateWith({ staff: v[0] })}
-        />
-      ),
-    },
-    {
-      key: "extras",
-      label: "More",
-      filter: (
-        <ChoiceList
-          title="More"
-          titleHidden
-          allowMultiple
-          choices={[
-            { label: "High-value orders", value: "hv" },
-            { label: "Orders with notes", value: "notes" },
-            { label: "Orders with tags", value: "tags" },
-          ]}
-          selected={[f.highValueOnly ? "hv" : "", f.hasNotes ? "notes" : "", f.hasTags ? "tags" : ""].filter(Boolean)}
-          onChange={(values) =>
-            navigateWith({
-              hv: values.includes("hv") ? "1" : undefined,
-              notes: values.includes("notes") ? "1" : undefined,
-              tags: values.includes("tags") ? "1" : undefined,
-            })
-          }
-        />
-      ),
-    },
-  ];
-
   const visibleColumns = ORDER_COLUMNS.filter((c) => data.columns.includes(c.id));
-  const sortColumnIndex = visibleColumns.findIndex((c) => c.id === data.sort.column);
+  const syncing = fetcher.state !== "idle" && fetcher.formData?.get("intent") === "sync";
 
-  const rowMarkup = data.orders.map((order, index) => (
-    <IndexTable.Row
-      id={order.id}
-      key={order.id}
-      selected={selectedResources.includes(order.id as never)}
-      position={index}
-      onClick={() => navigate(`/app/orders/${encodeURIComponent(order.shopifyOrderId)}`)}
-    >
-      {visibleColumns.map((column) => (
-        <IndexTable.Cell key={column.id}>{cellFor(column.id, order)}</IndexTable.Cell>
-      ))}
-    </IndexTable.Row>
-  ));
+  const sortBy = (columnId: OrderColumnId) => {
+    const isCurrent = data.sort.column === columnId;
+    navigateWith({
+      sort: columnId,
+      dir: isCurrent && data.sort.direction === "asc" ? "desc" : "asc",
+    });
+  };
 
   return (
-    <Page
-      title="Orders"
-      primaryAction={{
-        content: "Sync orders",
-        onAction: () => fetcher.submit({ intent: "sync" }, { method: "post" }),
-        loading: fetcher.state !== "idle" && fetcher.formData?.get("intent") === "sync",
-      }}
-      secondaryActions={[
-        {
-          content: "Export CSV",
-          onAction: () => fetcher.submit({ intent: "export" }, { method: "post" }),
-        },
-        { content: "Save current view", onAction: () => setSaveViewOpen(true) },
-      ]}
-    >
-      <Layout>
-        <Layout.Section>
-          <SummaryCards data={data.metrics} />
-        </Layout.Section>
+    <s-page heading="Orders">
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        loading={syncing || undefined}
+        onClick={() => fetcher.submit({ intent: "sync" }, { method: "post" })}
+      >
+        Sync orders
+      </s-button>
+      <s-button
+        slot="secondary-actions"
+        onClick={() => fetcher.submit({ intent: "export" }, { method: "post" })}
+      >
+        Export CSV
+      </s-button>
+      <s-button slot="secondary-actions" commandFor={SAVE_VIEW_MODAL} command="--show">
+        Save current view
+      </s-button>
 
-        {fetcher.data?.message ? (
-          <Layout.Section>
-            <Banner tone={fetcher.data.ok ? "success" : "critical"}>
-              <p>{fetcher.data.message}</p>
-            </Banner>
-          </Layout.Section>
-        ) : null}
+      <s-section>
+        <SummaryCards data={data.metrics} />
+      </s-section>
 
-        <Layout.Section>
-          <Card padding="0">
-            <div style={{ padding: "12px 16px", display: "flex", gap: "8px", alignItems: "center" }}>
-              <div style={{ flex: 1 }}>
-                <Select
+      {fetcher.data?.message ? (
+        <s-banner tone={fetcher.data.ok ? "success" : "critical"}>{fetcher.data.message}</s-banner>
+      ) : null}
+
+      <s-section padding="none">
+        <s-table
+          paginate
+          hasPreviousPage={Boolean(data.previousCursor)}
+          hasNextPage={Boolean(data.nextCursor)}
+          onPreviousPage={() => {
+            const params = new URLSearchParams(searchParams);
+            params.set("cursor", data.previousCursor ?? "");
+            params.set("cursorDir", "backward");
+            navigate(`/app/orders?${params.toString()}`);
+          }}
+          onNextPage={() => {
+            const params = new URLSearchParams(searchParams);
+            params.set("cursor", data.nextCursor ?? "");
+            params.set("cursorDir", "forward");
+            navigate(`/app/orders?${params.toString()}`);
+          }}
+        >
+          <s-box slot="filters" padding="base">
+            <s-stack direction="block" gap="base">
+              <s-stack direction="inline" gap="base" alignItems="end">
+                <s-select
                   label="Saved views"
-                  labelHidden
-                  options={[
-                    { label: "All orders", value: "" },
-                    ...data.views.map((v) => ({ label: v.name, value: v.id })),
-                  ]}
                   value=""
-                  onChange={(viewId) => {
+                  onChange={(event) => {
+                    const viewId = event.currentTarget.value;
                     const view = data.views.find((v) => v.id === viewId);
                     if (!view) {
                       navigate("/app/orders");
@@ -557,171 +409,228 @@ export default function OrdersPage() {
                       )}`,
                     );
                   }}
-                />
-              </div>
-              <ColumnChooser
-                selected={data.columns}
-                onApply={(columns) => {
-                  fetcher.submit(
-                    { intent: "columns", columns: columns.join(",") },
-                    { method: "post" },
-                  );
-                  navigateWith({ cols: columns.join(",") });
-                }}
-              />
-            </div>
-            <Filters
-              queryValue={queryValue}
-              queryPlaceholder="Search order number, customer, email, phone"
-              filters={filterConfigs}
-              appliedFilters={appliedFilters}
-              onQueryChange={onSearchChange}
-              onQueryClear={() => onSearchChange("")}
-              onClearAll={() => navigate("/app/orders")}
-            />
-            {data.orders.length === 0 ? (
-              <EmptyState
-                heading={data.hasOrders || queryValue ? "No orders match these filters" : "No orders synced yet"}
-                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-              >
-                <p>
-                  {data.hasOrders || queryValue
-                    ? "Try clearing some filters or search terms."
-                    : "Use the Sync orders button to pull orders from Shopify."}
-                </p>
-              </EmptyState>
-            ) : (
-              <>
-                <IndexTable
-                  resourceName={{ singular: "order", plural: "orders" }}
-                  itemCount={data.orders.length}
-                  selectedItemsCount={
-                    allResourcesSelected ? "All" : selectedResources.length
-                  }
-                  onSelectionChange={handleSelectionChange}
-                  headings={visibleColumns.map((c) => ({ title: c.label })) as [{ title: string }, ...Array<{ title: string }>]}
-                  bulkActions={bulkActions}
-                  sortable={visibleColumns.map((c) => SORTABLE.includes(c.id))}
-                  sortColumnIndex={sortColumnIndex >= 0 ? sortColumnIndex : undefined}
-                  sortDirection={data.sort.direction === "asc" ? "ascending" : "descending"}
-                  onSort={(index, direction) => {
-                    const column = visibleColumns[index];
-                    if (!column) return;
-                    navigateWith({
-                      sort: column.id,
-                      dir: direction === "ascending" ? "asc" : "desc",
-                    });
-                  }}
                 >
-                  {rowMarkup}
-                </IndexTable>
-                <div style={{ padding: "12px", display: "flex", justifyContent: "center" }}>
-                  <Pagination
-                    hasNext={Boolean(data.nextCursor)}
-                    hasPrevious={Boolean(data.previousCursor)}
-                    onNext={() => {
-                      const params = new URLSearchParams(searchParams);
-                      params.set("cursor", data.nextCursor ?? "");
-                      params.set("cursorDir", "forward");
-                      navigate(`/app/orders?${params.toString()}`);
-                    }}
-                    onPrevious={() => {
-                      const params = new URLSearchParams(searchParams);
-                      params.set("cursor", data.previousCursor ?? "");
-                      params.set("cursorDir", "backward");
-                      navigate(`/app/orders?${params.toString()}`);
-                    }}
+                  <s-option value="">All orders</s-option>
+                  {data.views.map((v) => (
+                    <s-option key={v.id} value={v.id}>{v.name}</s-option>
+                  ))}
+                </s-select>
+                <ColumnChooser
+                  selected={data.columns}
+                  onApply={(columns) => {
+                    fetcher.submit({ intent: "columns", columns: columns.join(",") }, { method: "post" });
+                    navigateWith({ cols: columns.join(",") });
+                  }}
+                />
+              </s-stack>
+
+              <s-search-field
+                label="Search orders"
+                placeholder="Search order number, customer, email, phone"
+                value={queryValue}
+                onChange={(event) => onSearchChange(event.currentTarget.value)}
+              />
+
+              <s-grid gridTemplateColumns="repeat(auto-fit, minmax(160px, 1fr))" gap="small-200">
+                <s-select label="Fulfillment" value={f.fulfillment} onChange={(e) => navigateWith({ fulfillment: e.currentTarget.value })}>
+                  <s-option value="ANY">Any</s-option>
+                  <s-option value="FULFILLED">Fulfilled</s-option>
+                  <s-option value="UNFULFILLED">Unfulfilled</s-option>
+                </s-select>
+                <s-select label="Payment status" value={f.financial} onChange={(e) => navigateWith({ financial: e.currentTarget.value })}>
+                  <s-option value="ANY">Any</s-option>
+                  <s-option value="PAID">Paid</s-option>
+                  <s-option value="PENDING">Pending payment</s-option>
+                </s-select>
+                <s-select label="COD" value={f.cod} onChange={(e) => navigateWith({ cod: e.currentTarget.value })}>
+                  <s-option value="ANY">Any</s-option>
+                  <s-option value="COD">COD orders</s-option>
+                  <s-option value="COD_PENDING">Pending COD verification</s-option>
+                  <s-option value="COD_VERIFIED">Verified COD</s-option>
+                  <s-option value="NOT_COD">Not COD</s-option>
+                </s-select>
+                <s-select label="Date" value={f.dateRange} onChange={(e) => navigateWith({ range: e.currentTarget.value })}>
+                  <s-option value="ANY">Any time</s-option>
+                  <s-option value="TODAY">Today</s-option>
+                  <s-option value="LAST_7_DAYS">Last 7 days</s-option>
+                  <s-option value="LAST_30_DAYS">Last 30 days</s-option>
+                </s-select>
+                <s-select label="Assignment" value={f.assigned} onChange={(e) => navigateWith({ assigned: e.currentTarget.value })}>
+                  <s-option value="ANY">Any</s-option>
+                  <s-option value="ASSIGNED">Assigned</s-option>
+                  <s-option value="UNASSIGNED">Unassigned</s-option>
+                </s-select>
+                <s-select label="Staff member" value={f.staffId ?? ""} onChange={(e) => navigateWith({ staff: e.currentTarget.value })}>
+                  <s-option value="">Any staff</s-option>
+                  {data.staff.map((st) => (
+                    <s-option key={st.id} value={st.id}>{st.name}</s-option>
+                  ))}
+                </s-select>
+              </s-grid>
+
+              <s-stack direction="inline" gap="base">
+                <s-checkbox label="High value" checked={f.highValueOnly} onChange={() => navigateWith({ hv: f.highValueOnly ? undefined : "1" })} />
+                <s-checkbox label="Has notes" checked={f.hasNotes} onChange={() => navigateWith({ notes: f.hasNotes ? undefined : "1" })} />
+                <s-checkbox label="Has tags" checked={f.hasTags} onChange={() => navigateWith({ tags: f.hasTags ? undefined : "1" })} />
+              </s-stack>
+
+              {appliedFilters.length ? (
+                <s-stack direction="inline" gap="small-200" alignItems="center">
+                  {appliedFilters.map((af) => (
+                    <s-button key={af.key} variant="tertiary" onClick={af.onRemove}>
+                      {af.label} &times;
+                    </s-button>
+                  ))}
+                  <s-button variant="tertiary" onClick={() => navigate("/app/orders")}>Clear all</s-button>
+                </s-stack>
+              ) : null}
+
+              {selectedIds.length ? (
+                <s-box padding="small-200" background="subdued" borderRadius="base">
+                  <s-stack direction="inline" gap="small-200" alignItems="center">
+                    <s-text type="strong">{selectedIds.length} selected</s-text>
+                    <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("addTag")}>Add tag</s-button>
+                    <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("removeTag")}>Remove tag</s-button>
+                    <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("addNote")}>Add note</s-button>
+                    <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("assign")}>Assign staff</s-button>
+                    <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("cod")}>Mark COD status</s-button>
+                    <s-button variant="tertiary" onClick={() => runBulk({ type: "UNASSIGN_STAFF" })}>Unassign staff</s-button>
+                    <s-button variant="tertiary" onClick={() => navigate(`/app/print?ids=${selectedIds.join(",")}`)}>Print selected</s-button>
+                    <s-button
+                      variant="tertiary"
+                      onClick={() =>
+                        selectedOrderRows.slice(0, 10).forEach((o) =>
+                          window.open(adminOrderUrl(data.shopDomain, o.shopifyOrderId), "_blank"),
+                        )
+                      }
+                    >
+                      Open in Shopify Admin
+                    </s-button>
+                  </s-stack>
+                </s-box>
+              ) : null}
+            </s-stack>
+          </s-box>
+
+          <s-table-header-row>
+            <s-table-header>
+              <s-checkbox label="Select all" checked={allSelected} onChange={toggleAll} />
+            </s-table-header>
+            {visibleColumns.map((c) => (
+              <s-table-header key={c.id}>
+                {SORTABLE.includes(c.id) ? (
+                  <s-clickable onClick={() => sortBy(c.id)}>
+                    {c.label}
+                    {data.sort.column === c.id ? (data.sort.direction === "asc" ? " ↑" : " ↓") : ""}
+                  </s-clickable>
+                ) : (
+                  c.label
+                )}
+              </s-table-header>
+            ))}
+          </s-table-header-row>
+          <s-table-body>
+            {data.orders.map((order) => (
+              <s-table-row key={order.id}>
+                <s-table-cell>
+                  <s-checkbox
+                    label={`Select ${order.name}`}
+                    checked={selectedIds.includes(order.id)}
+                    onChange={() => toggleRow(order.id)}
                   />
-                </div>
-              </>
-            )}
-          </Card>
-        </Layout.Section>
-      </Layout>
+                </s-table-cell>
+                {visibleColumns.map((column) => (
+                  <s-table-cell key={column.id}>{cellFor(column.id, order)}</s-table-cell>
+                ))}
+              </s-table-row>
+            ))}
+          </s-table-body>
+        </s-table>
 
-      <Modal
-        open={pendingBulk !== null}
-        onClose={() => setPendingBulk(null)}
-        title={
-          pendingBulk === "addTag" ? "Add tag"
-          : pendingBulk === "removeTag" ? "Remove tag"
-          : pendingBulk === "addNote" ? "Add internal note"
-          : pendingBulk === "assign" ? "Assign staff"
-          : "Mark COD status"
-        }
-        primaryAction={{
-          content: "Apply",
-          onAction: confirmBulkModal,
-          disabled:
-            (pendingBulk === "addTag" || pendingBulk === "removeTag") ? !tagValue.trim()
-            : pendingBulk === "addNote" ? !noteValue.trim()
-            : pendingBulk === "assign" ? !staffValue
-            : false,
-        }}
-        secondaryActions={[{ content: "Cancel", onAction: () => setPendingBulk(null) }]}
-      >
-        <Modal.Section>
-          <BlockStack gap="300">
-            <Text as="p" tone="subdued">
-              {selectedResources.length} order{selectedResources.length === 1 ? "" : "s"} selected
-            </Text>
-            {pendingBulk === "addTag" || pendingBulk === "removeTag" ? (
-              <TextField label="Tag" autoComplete="off" value={tagValue} onChange={setTagValue} />
-            ) : null}
-            {pendingBulk === "addNote" ? (
-              <TextField label="Note" autoComplete="off" value={noteValue} onChange={setNoteValue} multiline={3} />
-            ) : null}
-            {pendingBulk === "assign" ? (
-              <Select
-                label="Staff member"
-                options={[{ label: "Choose staff", value: "" }, ...data.staff.map((s) => ({ label: s.name, value: s.id }))]}
-                value={staffValue}
-                onChange={setStaffValue}
-              />
-            ) : null}
-            {pendingBulk === "cod" ? (
-              <Select
-                label="COD status"
-                options={[
-                  { label: "Pending", value: "PENDING" },
-                  { label: "Verified", value: "VERIFIED" },
-                  { label: "Failed", value: "FAILED" },
-                  { label: "Cancelled", value: "CANCELLED" },
-                ]}
-                value={codValue}
-                onChange={setCodValue}
-              />
-            ) : null}
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
+        {data.orders.length === 0 ? (
+          <s-box padding="large-100">
+            <s-stack direction="block" gap="base" alignItems="center">
+              <s-heading>
+                {data.hasOrders || queryValue ? "No orders match these filters" : "No orders synced yet"}
+              </s-heading>
+              <s-paragraph color="subdued">
+                {data.hasOrders || queryValue
+                  ? "Try clearing some filters or search terms."
+                  : "Use the Sync orders button to pull orders from Shopify."}
+              </s-paragraph>
+            </s-stack>
+          </s-box>
+        ) : null}
+      </s-section>
 
-      <Modal
-        open={saveViewOpen}
-        onClose={() => setSaveViewOpen(false)}
-        title="Save current view"
-        primaryAction={{
-          content: "Save view",
-          disabled: !viewName.trim(),
-          onAction: () => {
+      <s-modal id={BULK_MODAL} heading={pendingBulk ? BULK_TITLES[pendingBulk] : "Bulk action"}>
+        <s-stack direction="block" gap="base">
+          <s-paragraph color="subdued">
+            {selectedIds.length} order{selectedIds.length === 1 ? "" : "s"} selected
+          </s-paragraph>
+          {pendingBulk === "addTag" || pendingBulk === "removeTag" ? (
+            <s-text-field label="Tag" value={tagValue} onChange={(e) => setTagValue(e.currentTarget.value)} />
+          ) : null}
+          {pendingBulk === "addNote" ? (
+            <s-text-area label="Note" rows={3} value={noteValue} onChange={(e) => setNoteValue(e.currentTarget.value)} />
+          ) : null}
+          {pendingBulk === "assign" ? (
+            <s-select label="Staff member" value={staffValue} onChange={(e) => setStaffValue(e.currentTarget.value)}>
+              <s-option value="">Choose staff</s-option>
+              {data.staff.map((st) => (
+                <s-option key={st.id} value={st.id}>{st.name}</s-option>
+              ))}
+            </s-select>
+          ) : null}
+          {pendingBulk === "cod" ? (
+            <s-select label="COD status" value={codValue} onChange={(e) => setCodValue(e.currentTarget.value)}>
+              <s-option value="PENDING">Pending</s-option>
+              <s-option value="VERIFIED">Verified</s-option>
+              <s-option value="FAILED">Failed</s-option>
+              <s-option value="CANCELLED">Cancelled</s-option>
+            </s-select>
+          ) : null}
+        </s-stack>
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          disabled={applyDisabled}
+          commandFor={BULK_MODAL}
+          command="--hide"
+          onClick={confirmBulkModal}
+        >
+          Apply
+        </s-button>
+        <s-button slot="secondary-actions" commandFor={BULK_MODAL} command="--hide" onClick={() => setPendingBulk(null)}>
+          Cancel
+        </s-button>
+      </s-modal>
+
+      <s-modal id={SAVE_VIEW_MODAL} heading="Save current view">
+        <s-text-field
+          label="View name"
+          placeholder="e.g. Today's COD"
+          value={viewName}
+          onChange={(e) => setViewName(e.currentTarget.value)}
+        />
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          disabled={!viewName.trim()}
+          commandFor={SAVE_VIEW_MODAL}
+          command="--hide"
+          onClick={() => {
             fetcher.submit({ intent: "saveView", viewName: viewName.trim() }, { method: "post" });
-            setSaveViewOpen(false);
             setViewName("");
-          },
-        }}
-        secondaryActions={[{ content: "Cancel", onAction: () => setSaveViewOpen(false) }]}
-      >
-        <Modal.Section>
-          <TextField
-            label="View name"
-            autoComplete="off"
-            placeholder='e.g. "Today\u2019s COD"'
-            value={viewName}
-            onChange={setViewName}
-          />
-        </Modal.Section>
-      </Modal>
-    </Page>
+          }}
+        >
+          Save view
+        </s-button>
+        <s-button slot="secondary-actions" commandFor={SAVE_VIEW_MODAL} command="--hide">
+          Cancel
+        </s-button>
+      </s-modal>
+    </s-page>
   );
 }
 

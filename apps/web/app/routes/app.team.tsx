@@ -5,20 +5,6 @@ import type {
   LoaderFunctionArgs,
 } from "react-router";
 import { useLoaderData, useFetcher, useRouteError } from "react-router";
-import {
-  Page,
-  Layout,
-  Card,
-  IndexTable,
-  Text,
-  Badge,
-  Button,
-  Modal,
-  TextField,
-  EmptyState,
-  Banner,
-  BlockStack,
-} from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
@@ -69,97 +55,111 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
+const ADD_STAFF_MODAL = "add-staff-modal";
+
 export default function TeamPage() {
   const { staff } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<{ ok: boolean; message: string }>();
-  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
 
-  return (
-    <Page
-      title="Team"
-      primaryAction={{ content: "Add staff member", onAction: () => setOpen(true) }}
-    >
-      <Layout>
-        {fetcher.data?.message ? (
-          <Layout.Section>
-            <Banner tone={fetcher.data.ok ? "success" : "critical"}>
-              <p>{fetcher.data.message}</p>
-            </Banner>
-          </Layout.Section>
-        ) : null}
-        <Layout.Section>
-          <Card padding="0">
-            {staff.length === 0 ? (
-              <EmptyState
-                heading="No team members yet"
-                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-                action={{ content: "Add staff member", onAction: () => setOpen(true) }}
-              >
-                <p>Add staff so orders can be assigned for processing.</p>
-              </EmptyState>
-            ) : (
-              <IndexTable
-                resourceName={{ singular: "staff member", plural: "staff members" }}
-                itemCount={staff.length}
-                selectable={false}
-                headings={[{ title: "Name" }, { title: "Email" }, { title: "Status" }, { title: "Actions" }]}
-              >
-                {staff.map((member, index) => (
-                  <IndexTable.Row id={member.id} key={member.id} position={index}>
-                    <IndexTable.Cell>
-                      <Text as="span" variant="bodyMd" fontWeight="semibold">{member.name}</Text>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>{member.email ?? "-"}</IndexTable.Cell>
-                    <IndexTable.Cell>
-                      {member.active ? <Badge tone="success">Active</Badge> : <Badge>Inactive</Badge>}
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>
-                      <Button
-                        size="slim"
-                        onClick={() =>
-                          fetcher.submit(
-                            { intent: "setActive", staffId: member.id, active: String(!member.active) },
-                            { method: "post" },
-                          )
-                        }
-                      >
-                        {member.active ? "Deactivate" : "Reactivate"}
-                      </Button>
-                    </IndexTable.Cell>
-                  </IndexTable.Row>
-                ))}
-              </IndexTable>
-            )}
-          </Card>
-        </Layout.Section>
-      </Layout>
+  const submit = () => {
+    fetcher.submit({ intent: "create", name: name.trim(), email: email.trim() }, { method: "post" });
+    setName("");
+    setEmail("");
+  };
 
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Add staff member"
-        primaryAction={{
-          content: "Add",
-          disabled: !name.trim(),
-          onAction: () => {
-            fetcher.submit({ intent: "create", name: name.trim(), email: email.trim() }, { method: "post" });
-            setOpen(false);
-            setName("");
-            setEmail("");
-          },
-        }}
-        secondaryActions={[{ content: "Cancel", onAction: () => setOpen(false) }]}
-      >
-        <Modal.Section>
-          <BlockStack gap="300">
-            <TextField label="Name" autoComplete="off" value={name} onChange={setName} />
-            <TextField label="Email" type="email" autoComplete="off" value={email} onChange={setEmail} />
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
-    </Page>
+  return (
+    <s-page heading="Team">
+      <s-button slot="primary-action" variant="primary" commandFor={ADD_STAFF_MODAL} command="--show">
+        Add staff member
+      </s-button>
+
+      {fetcher.data?.message ? (
+        <s-banner tone={fetcher.data.ok ? "success" : "critical"}>{fetcher.data.message}</s-banner>
+      ) : null}
+
+      <s-section padding="none">
+        {staff.length === 0 ? (
+          <s-box padding="large-100">
+            <s-stack direction="block" gap="base" alignItems="center">
+              <s-heading>No team members yet</s-heading>
+              <s-paragraph color="subdued">Add staff so orders can be assigned for processing.</s-paragraph>
+              <s-button variant="primary" commandFor={ADD_STAFF_MODAL} command="--show">
+                Add staff member
+              </s-button>
+            </s-stack>
+          </s-box>
+        ) : (
+          <s-table>
+            <s-table-header-row>
+              <s-table-header listSlot="primary">Name</s-table-header>
+              <s-table-header>Email</s-table-header>
+              <s-table-header>Status</s-table-header>
+              <s-table-header>Actions</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {staff.map((member) => (
+                <s-table-row key={member.id}>
+                  <s-table-cell>
+                    <s-text type="strong">{member.name}</s-text>
+                  </s-table-cell>
+                  <s-table-cell>{member.email ?? "-"}</s-table-cell>
+                  <s-table-cell>
+                    {member.active ? (
+                      <s-badge tone="success">Active</s-badge>
+                    ) : (
+                      <s-badge tone="neutral">Inactive</s-badge>
+                    )}
+                  </s-table-cell>
+                  <s-table-cell>
+                    <s-button
+                      variant="secondary"
+                      onClick={() =>
+                        fetcher.submit(
+                          { intent: "setActive", staffId: member.id, active: String(!member.active) },
+                          { method: "post" },
+                        )
+                      }
+                    >
+                      {member.active ? "Deactivate" : "Reactivate"}
+                    </s-button>
+                  </s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+        )}
+      </s-section>
+
+      <s-modal id={ADD_STAFF_MODAL} heading="Add staff member">
+        <s-stack direction="block" gap="base">
+          <s-text-field
+            label="Name"
+            value={name}
+            onChange={(event) => setName(event.currentTarget.value)}
+          />
+          <s-email-field
+            label="Email"
+            value={email}
+            onChange={(event) => setEmail(event.currentTarget.value)}
+          />
+        </s-stack>
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          disabled={!name.trim()}
+          commandFor={ADD_STAFF_MODAL}
+          command="--hide"
+          onClick={submit}
+        >
+          Add
+        </s-button>
+        <s-button slot="secondary-actions" commandFor={ADD_STAFF_MODAL} command="--hide">
+          Cancel
+        </s-button>
+      </s-modal>
+    </s-page>
   );
 }
 

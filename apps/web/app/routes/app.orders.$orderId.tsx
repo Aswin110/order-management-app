@@ -4,21 +4,6 @@ import type {
   LoaderFunctionArgs,
 } from "react-router";
 import { useLoaderData, useFetcher, useRouteError } from "react-router";
-import {
-  Page,
-  Layout,
-  Card,
-  Text,
-  BlockStack,
-  InlineStack,
-  Badge,
-  Button,
-  Select,
-  TextField,
-  Divider,
-  Banner,
-  DataTable,
-} from "@shopify/polaris";
 import { useState } from "react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -196,195 +181,209 @@ export default function OrderDetailsPage() {
 
   const currency = order?.currencyCode ?? "";
 
+  const totalRow = (label: string, value: string, strong = false) => (
+    <s-stack direction="inline" gap="base" justifyContent="space-between">
+      {strong ? <s-text type="strong">{label}</s-text> : <s-text color="subdued">{label}</s-text>}
+      {strong ? <s-text type="strong">{value}</s-text> : <s-text>{value}</s-text>}
+    </s-stack>
+  );
+
   return (
-    <Page
-      backAction={{ url: "/app/orders" }}
-      title={order?.name ?? "Order"}
-      subtitle={order?.createdAt ? `Placed ${new Date(order.createdAt).toLocaleString("en-IN")}` : undefined}
-      primaryAction={{
-        content: "Open in Shopify Admin",
-        onAction: () => window.open(adminOrderUrl(data.shopDomain, data.shopifyOrderId), "_blank"),
-      }}
-    >
-      <Layout>
-        {data.fetchError ? (
-          <Layout.Section>
-            <Banner tone="warning">
-              <p>Live order data could not be loaded from Shopify: {data.fetchError}</p>
-            </Banner>
-          </Layout.Section>
-        ) : null}
-        {fetcher.data?.message ? (
-          <Layout.Section>
-            <Banner tone={fetcher.data.ok ? "success" : "critical"}>
-              <p>{fetcher.data.message}</p>
-            </Banner>
-          </Layout.Section>
-        ) : null}
+    <s-page heading={order?.name ?? "Order"}>
+      <s-link slot="breadcrumb-actions" href="/app/orders">Orders</s-link>
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        onClick={() => window.open(adminOrderUrl(data.shopDomain, data.shopifyOrderId), "_blank")}
+      >
+        Open in Shopify Admin
+      </s-button>
 
-        <Layout.Section>
-          <BlockStack gap="400">
-            {order ? (
-              <Card>
-                <BlockStack gap="300">
-                  <Text as="h2" variant="headingMd">Items</Text>
-                  <DataTable
-                    columnContentTypes={["text", "text", "numeric", "numeric", "numeric"]}
-                    headings={["Product", "Variant", "Qty", "Price", "Total"]}
-                    rows={(order.lineItems?.nodes ?? []).map((item) => [
-                      item.title,
-                      item.variantTitle ?? "-",
-                      item.quantity,
-                      money(item.originalUnitPriceSet, currency),
-                      money(item.discountedTotalSet, currency),
-                    ])}
-                  />
-                  <Divider />
-                  <BlockStack gap="100">
-                    <InlineStack align="space-between"><Text as="span" tone="subdued">Subtotal</Text><Text as="span">{money(order.subtotalPriceSet, currency)}</Text></InlineStack>
-                    <InlineStack align="space-between"><Text as="span" tone="subdued">Discounts</Text><Text as="span">-{money(order.totalDiscountsSet, currency)}</Text></InlineStack>
-                    <InlineStack align="space-between"><Text as="span" tone="subdued">Shipping</Text><Text as="span">{money(order.totalShippingPriceSet, currency)}</Text></InlineStack>
-                    <InlineStack align="space-between"><Text as="span" tone="subdued">Tax</Text><Text as="span">{money(order.totalTaxSet, currency)}</Text></InlineStack>
-                    <InlineStack align="space-between"><Text as="span" variant="headingSm">Total</Text><Text as="span" variant="headingSm">{money(order.totalPriceSet, currency)}</Text></InlineStack>
-                  </BlockStack>
-                </BlockStack>
-              </Card>
+      {order?.createdAt ? (
+        <s-paragraph color="subdued">
+          Placed {new Date(order.createdAt).toLocaleString("en-IN")}
+        </s-paragraph>
+      ) : null}
+
+      {data.fetchError ? (
+        <s-banner tone="warning">
+          Live order data could not be loaded from Shopify: {data.fetchError}
+        </s-banner>
+      ) : null}
+      {fetcher.data?.message ? (
+        <s-banner tone={fetcher.data.ok ? "success" : "critical"}>{fetcher.data.message}</s-banner>
+      ) : null}
+
+      {order ? (
+        <s-section heading="Items">
+          <s-stack direction="block" gap="base">
+            <s-table>
+              <s-table-header-row>
+                <s-table-header listSlot="primary">Product</s-table-header>
+                <s-table-header>Variant</s-table-header>
+                <s-table-header format="numeric">Qty</s-table-header>
+                <s-table-header format="numeric">Price</s-table-header>
+                <s-table-header format="numeric">Total</s-table-header>
+              </s-table-header-row>
+              <s-table-body>
+                {(order.lineItems?.nodes ?? []).map((item) => (
+                  <s-table-row key={item.id}>
+                    <s-table-cell>{item.title}</s-table-cell>
+                    <s-table-cell>{item.variantTitle ?? "-"}</s-table-cell>
+                    <s-table-cell>{String(item.quantity)}</s-table-cell>
+                    <s-table-cell>{money(item.originalUnitPriceSet, currency)}</s-table-cell>
+                    <s-table-cell>{money(item.discountedTotalSet, currency)}</s-table-cell>
+                  </s-table-row>
+                ))}
+              </s-table-body>
+            </s-table>
+            <s-divider />
+            <s-stack direction="block" gap="small-500">
+              {totalRow("Subtotal", money(order.subtotalPriceSet, currency))}
+              {totalRow("Discounts", `-${money(order.totalDiscountsSet, currency)}`)}
+              {totalRow("Shipping", money(order.totalShippingPriceSet, currency))}
+              {totalRow("Tax", money(order.totalTaxSet, currency))}
+              {totalRow("Total", money(order.totalPriceSet, currency), true)}
+            </s-stack>
+          </s-stack>
+        </s-section>
+      ) : null}
+
+      <s-section heading="Internal notes">
+        <s-stack direction="block" gap="base">
+          {data.notes.length === 0 ? (
+            <s-paragraph color="subdued">
+              No notes yet. Notes are internal to Order Operations and never change the Shopify order.
+            </s-paragraph>
+          ) : (
+            <s-stack direction="block" gap="base">
+              {data.notes.map((note) => (
+                <s-stack key={note.id} direction="block" gap="small-500">
+                  <s-stack direction="inline" gap="base" justifyContent="space-between">
+                    <s-text type="strong">
+                      {note.authorName} - {new Date(note.createdAt).toLocaleString("en-IN")}
+                    </s-text>
+                    <s-button
+                      variant="tertiary"
+                      tone="critical"
+                      onClick={() => fetcher.submit({ intent: "deleteNote", noteId: note.id }, { method: "post" })}
+                    >
+                      Delete
+                    </s-button>
+                  </s-stack>
+                  <s-paragraph>{note.content}</s-paragraph>
+                  <s-divider />
+                </s-stack>
+              ))}
+            </s-stack>
+          )}
+          <s-text-area
+            label="Add a note"
+            rows={2}
+            placeholder="Write an internal note..."
+            value={noteContent}
+            onChange={(event) => setNoteContent(event.currentTarget.value)}
+          />
+          <s-stack direction="inline" justifyContent="end">
+            <s-button
+              variant="primary"
+              disabled={!noteContent.trim()}
+              onClick={() => {
+                fetcher.submit({ intent: "addNote", content: noteContent }, { method: "post" });
+                setNoteContent("");
+              }}
+            >
+              Add note
+            </s-button>
+          </s-stack>
+        </s-stack>
+      </s-section>
+
+      {order ? (
+        <s-section heading="Customer">
+          <s-stack direction="block" gap="small-200">
+            <s-paragraph>{order.customer?.displayName ?? "Guest"}</s-paragraph>
+            {order.customer?.email || order.email ? (
+              <s-paragraph color="subdued">{order.customer?.email ?? order.email}</s-paragraph>
             ) : null}
-
-            <Card>
-              <BlockStack gap="300">
-                <Text as="h2" variant="headingMd">Internal notes</Text>
-                {data.notes.length === 0 ? (
-                  <Text as="p" tone="subdued">No notes yet. Notes are internal to Order Operations and never change the Shopify order.</Text>
-                ) : (
-                  <BlockStack gap="300">
-                    {data.notes.map((note) => (
-                      <BlockStack gap="100" key={note.id}>
-                        <InlineStack align="space-between">
-                          <Text as="span" variant="bodySm" fontWeight="semibold">
-                            {note.authorName} - {new Date(note.createdAt).toLocaleString("en-IN")}
-                          </Text>
-                          <Button
-                            size="micro"
-                            tone="critical"
-                            variant="plain"
-                            onClick={() => fetcher.submit({ intent: "deleteNote", noteId: note.id }, { method: "post" })}
-                          >
-                            Delete
-                          </Button>
-                        </InlineStack>
-                        <Text as="p">{note.content}</Text>
-                        <Divider />
-                      </BlockStack>
-                    ))}
-                  </BlockStack>
-                )}
-                <InlineStack gap="200" align="end">
-                  <div style={{ flex: 1 }}>
-                    <TextField
-                      label="Add a note"
-                      labelHidden
-                      autoComplete="off"
-                      multiline={2}
-                      value={noteContent}
-                      onChange={setNoteContent}
-                      placeholder="Write an internal note..."
-                    />
-                  </div>
-                  <Button
-                    variant="primary"
-                    disabled={!noteContent.trim()}
-                    onClick={() => {
-                      fetcher.submit({ intent: "addNote", content: noteContent }, { method: "post" });
-                      setNoteContent("");
-                    }}
-                  >
-                    Add note
-                  </Button>
-                </InlineStack>
-              </BlockStack>
-            </Card>
-          </BlockStack>
-        </Layout.Section>
-
-        <Layout.Section variant="oneThird">
-          <BlockStack gap="400">
-            {order ? (
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">Customer</Text>
-                  <Text as="p">{order.customer?.displayName ?? "Guest"}</Text>
-                  {order.customer?.email || order.email ? <Text as="p" tone="subdued">{order.customer?.email ?? order.email}</Text> : null}
-                  {order.customer?.phone || order.phone ? <Text as="p" tone="subdued">{order.customer?.phone ?? order.phone}</Text> : null}
-                  <Divider />
-                  <InlineStack gap="200">
-                    <FinancialStatusBadge status={order.displayFinancialStatus ?? null} />
-                    <FulfillmentStatusBadge status={order.displayFulfillmentStatus ?? null} />
-                    <RiskBadge level={order.riskLevel ?? null} />
-                  </InlineStack>
-                  {order.cancelledAt ? <Badge tone="critical">Cancelled</Badge> : null}
-                  {order.tags?.length ? (
-                    <InlineStack gap="100">{order.tags.map((t) => <Badge key={t}>{t}</Badge>)}</InlineStack>
-                  ) : null}
-                </BlockStack>
-              </Card>
+            {order.customer?.phone || order.phone ? (
+              <s-paragraph color="subdued">{order.customer?.phone ?? order.phone}</s-paragraph>
             ) : null}
-
-            {order?.shippingAddress ? (
-              <Card>
-                <BlockStack gap="100">
-                  <Text as="h2" variant="headingMd">Shipping address</Text>
-                  <Text as="p">{order.shippingAddress.name}</Text>
-                  <Text as="p" tone="subdued">
-                    {[order.shippingAddress.address1, order.shippingAddress.address2, order.shippingAddress.city, order.shippingAddress.provinceCode, order.shippingAddress.zip, order.shippingAddress.countryCodeV2].filter(Boolean).join(", ")}
-                  </Text>
-                  {order.shippingAddress.phone ? <Text as="p" tone="subdued">{order.shippingAddress.phone}</Text> : null}
-                </BlockStack>
-              </Card>
+            <s-divider />
+            <s-stack direction="inline" gap="small-200">
+              <FinancialStatusBadge status={order.displayFinancialStatus ?? null} />
+              <FulfillmentStatusBadge status={order.displayFulfillmentStatus ?? null} />
+              <RiskBadge level={order.riskLevel ?? null} />
+            </s-stack>
+            {order.cancelledAt ? <s-badge tone="critical">Cancelled</s-badge> : null}
+            {order.tags?.length ? (
+              <s-stack direction="inline" gap="small-500">
+                {order.tags.map((t) => <s-badge key={t} tone="neutral">{t}</s-badge>)}
+              </s-stack>
             ) : null}
+          </s-stack>
+        </s-section>
+      ) : null}
 
-            <Card>
-              <BlockStack gap="200">
-                <Text as="h2" variant="headingMd">COD verification</Text>
-                <CodBadge status={data.local?.codStatus ?? "NOT_COD"} />
-                <Select
-                  label="Change COD status"
-                  options={[
-                    { label: "Not COD", value: "NOT_COD" },
-                    { label: "Pending", value: "PENDING" },
-                    { label: "Verified", value: "VERIFIED" },
-                    { label: "Failed", value: "FAILED" },
-                    { label: "Cancelled", value: "CANCELLED" },
-                  ]}
-                  value={data.local?.codStatus ?? "NOT_COD"}
-                  onChange={(value) => fetcher.submit({ intent: "setCod", codStatus: value }, { method: "post" })}
-                />
-              </BlockStack>
-            </Card>
+      {order?.shippingAddress ? (
+        <s-section heading="Shipping address">
+          <s-stack direction="block" gap="small-500">
+            <s-paragraph>{order.shippingAddress.name}</s-paragraph>
+            <s-paragraph color="subdued">
+              {[order.shippingAddress.address1, order.shippingAddress.address2, order.shippingAddress.city, order.shippingAddress.provinceCode, order.shippingAddress.zip, order.shippingAddress.countryCodeV2].filter(Boolean).join(", ")}
+            </s-paragraph>
+            {order.shippingAddress.phone ? (
+              <s-paragraph color="subdued">{order.shippingAddress.phone}</s-paragraph>
+            ) : null}
+          </s-stack>
+        </s-section>
+      ) : null}
 
-            <Card>
-              <BlockStack gap="200">
-                <Text as="h2" variant="headingMd">Assigned staff</Text>
-                <Text as="p">{data.local?.assignedStaffName ?? "Unassigned"}</Text>
-                <Select
-                  label="Assign to"
-                  options={[{ label: "Choose staff", value: "" }, ...data.staff.map((s) => ({ label: s.name, value: s.id }))]}
-                  value=""
-                  onChange={(value) => {
-                    if (value) fetcher.submit({ intent: "assign", staffId: value }, { method: "post" });
-                  }}
-                />
-                {data.local?.assignedStaffId ? (
-                  <Button onClick={() => fetcher.submit({ intent: "unassign" }, { method: "post" })}>
-                    Unassign
-                  </Button>
-                ) : null}
-              </BlockStack>
-            </Card>
-          </BlockStack>
-        </Layout.Section>
-      </Layout>
-    </Page>
+      <s-section heading="COD verification">
+        <s-stack direction="block" gap="small-200">
+          <CodBadge status={data.local?.codStatus ?? "NOT_COD"} />
+          <s-select
+            label="Change COD status"
+            value={data.local?.codStatus ?? "NOT_COD"}
+            onChange={(event) =>
+              fetcher.submit({ intent: "setCod", codStatus: event.currentTarget.value }, { method: "post" })
+            }
+          >
+            <s-option value="NOT_COD">Not COD</s-option>
+            <s-option value="PENDING">Pending</s-option>
+            <s-option value="VERIFIED">Verified</s-option>
+            <s-option value="FAILED">Failed</s-option>
+            <s-option value="CANCELLED">Cancelled</s-option>
+          </s-select>
+        </s-stack>
+      </s-section>
+
+      <s-section heading="Assigned staff">
+        <s-stack direction="block" gap="small-200">
+          <s-paragraph>{data.local?.assignedStaffName ?? "Unassigned"}</s-paragraph>
+          <s-select
+            label="Assign to"
+            value=""
+            onChange={(event) => {
+              const staffId = event.currentTarget.value;
+              if (staffId) fetcher.submit({ intent: "assign", staffId }, { method: "post" });
+            }}
+          >
+            <s-option value="">Choose staff</s-option>
+            {data.staff.map((s) => (
+              <s-option key={s.id} value={s.id}>{s.name}</s-option>
+            ))}
+          </s-select>
+          {data.local?.assignedStaffId ? (
+            <s-stack direction="inline">
+              <s-button onClick={() => fetcher.submit({ intent: "unassign" }, { method: "post" })}>
+                Unassign
+              </s-button>
+            </s-stack>
+          ) : null}
+        </s-stack>
+      </s-section>
+    </s-page>
   );
 }
 
