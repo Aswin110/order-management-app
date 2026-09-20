@@ -10,7 +10,6 @@ import {
   ORDER_COLUMNS,
   mapAdminOrderToListItem,
   type OrderColumnId,
-  type OrderLineItem,
   type BulkActionPayload,
 } from "@order-operations/shared";
 
@@ -109,26 +108,49 @@ function money(amount: string | null, currency: string | null): string {
   return amount ? `${currency ?? ""} ${Number(amount).toLocaleString("en-IN")}` : "-";
 }
 
-function customPropsText(item: OrderLineItem): string {
-  return item.customAttributes.map((a) => `${a.key}: ${a.value}`).join("  ·  ");
-}
-
-function ItemsCell({ order }: { order: OrderRow }) {
+/**
+ * The full-width band under each order row: every line item with its image,
+ * variant, quantity/SKU and personalisation, so staff never have to open an
+ * order to see what has to be made.
+ */
+function LineItemsBand({ order }: { order: OrderRow }) {
   return (
-    <s-stack direction="block" gap="small-500">
+    <s-stack direction="block" gap="base">
       {order.items.map((item) => (
-        <s-stack key={item.id} direction="inline" gap="small-200" alignItems="center">
-          {item.imageUrl ? <s-thumbnail src={item.imageUrl} alt={item.imageAlt ?? item.title} size="small" /> : null}
+        <s-grid
+          key={item.id}
+          gridTemplateColumns="auto minmax(0, 1fr) minmax(0, 1.5fr)"
+          gap="base"
+          alignItems="start"
+        >
+          {item.imageUrl ? (
+            <s-thumbnail src={item.imageUrl} alt={item.imageAlt ?? item.title} size="large" />
+          ) : (
+            // Keeps the three columns aligned when an item has no image.
+            <s-box inlineSize="60px" blockSize="60px" background="subdued" borderRadius="base" />
+          )}
           <s-stack direction="block" gap="small-500">
-            <s-text>
-              {item.quantity} × {item.title}
-              {item.variantTitle ? ` - ${item.variantTitle}` : ""}
+            <s-text type="strong">{item.title}</s-text>
+            {item.variantTitle ? <s-text color="subdued">{item.variantTitle}</s-text> : null}
+            <s-text color="subdued">
+              x{item.quantity} · SKU: {item.sku ?? "N/A"}
             </s-text>
-            {item.customAttributes.length ? (
-              <s-text color="subdued">{customPropsText(item)}</s-text>
-            ) : null}
           </s-stack>
-        </s-stack>
+          {item.customAttributes.length ? (
+            <s-stack direction="block" gap="small-500">
+              <s-text color="subdued">Customizations</s-text>
+              <s-stack direction="inline" gap="small-500">
+                {item.customAttributes.map((attr) => (
+                  <s-chip key={attr.key}>
+                    {attr.key}: {attr.value}
+                  </s-chip>
+                ))}
+              </s-stack>
+            </s-stack>
+          ) : (
+            <s-box />
+          )}
+        </s-grid>
       ))}
       {order.hasMoreItems ? (
         <s-link href={`/app/orders/${encodeURIComponent(order.shopifyOrderId)}`}>
@@ -139,32 +161,46 @@ function ItemsCell({ order }: { order: OrderRow }) {
   );
 }
 
-function cellFor(column: OrderColumnId, order: OrderRow) {
+/** Date over time, so the column stays narrow but keeps both. */
+function DateCell({ iso }: { iso: string | null }) {
+  if (!iso) return <>-</>;
+  const d = new Date(iso);
+  return (
+    <s-stack direction="block" gap="small-500">
+      <s-text>{d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</s-text>
+      <s-text color="subdued">
+        {d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
+      </s-text>
+    </s-stack>
+  );
+}
+
+function cellFor(column: OrderColumnId, order: OrderRow, shopDomain: string) {
   switch (column) {
     case "name":
+      // Opens the real order in the Shopify admin, in a new tab so the queue
+      // this page is showing stays put.
       return (
-        <s-link href={`/app/orders/${encodeURIComponent(order.shopifyOrderId)}`}>
-          {order.name}
+        <s-link href={adminOrderUrl(shopDomain, order.shopifyOrderId)} target="_blank">
+          <s-text type="strong">{order.name}</s-text>
         </s-link>
       );
     case "orderedAt":
-      return order.orderedAt
-        ? new Date(order.orderedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
-        : "-";
+      return <DateCell iso={order.orderedAt} />;
     case "customerName":
-      return order.customerName ?? "-";
+      return order.customerName ? (
+        <s-text type="strong">{order.customerName}</s-text>
+      ) : "-";
     case "phone":
       return order.phone ?? "-";
     case "email":
       return order.email ?? "-";
-    case "items":
-      return <ItemsCell order={order} />;
     case "financialStatus":
       return <FinancialStatusBadge status={order.financialStatus} />;
     case "fulfillmentStatus":
       return <FulfillmentStatusBadge status={order.fulfillmentStatus} />;
     case "totalPrice":
-      return money(order.totalPrice, order.currency);
+      return <s-text type="strong">{money(order.totalPrice, order.currency)}</s-text>;
     case "tags":
       return order.tags.length ? (
         <s-stack direction="inline" gap="small-500">{order.tags.slice(0, 3).map((t) => <s-badge key={t} tone="neutral">{t}</s-badge>)}</s-stack>
@@ -177,6 +213,21 @@ function cellFor(column: OrderColumnId, order: OrderRow) {
 }
 
 const SORTABLE: OrderColumnId[] = ["name", "orderedAt", "totalPrice"];
+
+// The summary row is a grid rather than a table because each order is
+// followed by a band that spans every column, which a table cell cannot do.
+const COLUMN_WIDTH: Record<OrderColumnId, string> = {
+  name: "minmax(90px, 0.7fr)",
+  orderedAt: "minmax(100px, 0.7fr)",
+  customerName: "minmax(140px, 1.2fr)",
+  phone: "minmax(130px, 1fr)",
+  email: "minmax(170px, 1.3fr)",
+  totalPrice: "minmax(95px, 0.7fr)",
+  financialStatus: "minmax(105px, 0.8fr)",
+  fulfillmentStatus: "minmax(115px, 0.9fr)",
+  cod: "minmax(70px, 0.5fr)",
+  tags: "minmax(120px, 1fr)",
+};
 
 const BULK_MODAL = "bulk-action-modal";
 const SAVE_VIEW_MODAL = "save-view-modal";
@@ -223,7 +274,6 @@ export default function OrdersPage() {
     [navigateWith],
   );
 
-  // s-table has no built-in selection model, so selection is tracked locally.
   const allSelected = data.orders.length > 0 && selectedIds.length === data.orders.length;
   const toggleAll = () => setSelectedIds(allSelected ? [] : data.orders.map((o) => o.shopifyOrderId));
   const toggleRow = (id: string) =>
@@ -249,8 +299,6 @@ export default function OrdersPage() {
     setTagValue("");
   };
 
-  const applyDisabled = !tagValue.trim();
-
   const appliedFilters: Array<{ key: string; label: string; onRemove: () => void }> = [];
   const f = data.filters;
   if (f.fulfillment !== "ANY") appliedFilters.push({ key: "fulfillment", label: `Fulfillment: ${f.fulfillment.toLowerCase().replace(/_/g, " ")}`, onRemove: () => navigateWith({ fulfillment: undefined }) });
@@ -260,6 +308,9 @@ export default function OrdersPage() {
   if (f.search) appliedFilters.push({ key: "q", label: `Search: ${f.search}`, onRemove: () => navigateWith({ q: undefined }) });
 
   const visibleColumns = ORDER_COLUMNS.filter((c) => data.columns.includes(c.id));
+  // Leading "auto" is the select checkbox; header and rows share this template
+  // so the summary columns line up.
+  const gridTemplate = ["auto", ...visibleColumns.map((c) => COLUMN_WIDTH[c.id])].join(" ");
 
   const sortBy = (columnId: OrderColumnId) => {
     const isCurrent = data.sort.column === columnId;
@@ -278,7 +329,7 @@ export default function OrdersPage() {
   };
 
   return (
-    <s-page heading="Orders">
+    <s-page heading="Orders" inlineSize="large">
       <s-button
         slot="secondary-actions"
         href={`/app/orders.csv${searchParams.size ? `?${searchParams.toString()}` : ""}`}
@@ -294,159 +345,162 @@ export default function OrdersPage() {
       ) : null}
 
       <s-section padding="none">
-        <s-table
-          paginate
-          hasPreviousPage={data.pageInfo.hasPreviousPage && Boolean(data.pageInfo.startCursor)}
-          hasNextPage={data.pageInfo.hasNextPage && Boolean(data.pageInfo.endCursor)}
-          onPreviousPage={() => goToPage(data.pageInfo.startCursor, "backward")}
-          onNextPage={() => goToPage(data.pageInfo.endCursor, "forward")}
-        >
-          <s-box slot="filters" padding="base">
-            <s-stack direction="block" gap="base">
-              <s-stack direction="inline" gap="base" alignItems="end">
-                <s-select
-                  label="Saved views"
-                  value=""
-                  onChange={(event) => {
-                    const viewId = event.currentTarget.value;
-                    const view = data.views.find((v) => v.id === viewId);
-                    if (!view) {
-                      navigate("/app/orders");
-                      return;
-                    }
-                    navigate(
-                      `/app/orders${buildOrdersSearch(
-                        view.filters as unknown as typeof data.filters,
-                        (view.sort as never) ?? data.sort,
-                        (view.columns as OrderColumnId[])?.length ? (view.columns as OrderColumnId[]) : data.columns,
-                      )}`,
-                    );
-                  }}
-                >
-                  <s-option value="">All orders</s-option>
-                  {data.views.map((v) => (
-                    <s-option key={v.id} value={v.id}>{v.name}</s-option>
-                  ))}
-                </s-select>
-                <ColumnChooser
-                  selected={data.columns}
-                  onApply={(columns) => {
-                    fetcher.submit({ intent: "columns", columns: columns.join(",") }, { method: "post" });
-                    navigateWith({ cols: columns.join(",") });
-                  }}
-                />
-              </s-stack>
-
-              <s-search-field
-                label="Search orders"
-                placeholder="Search order number, customer, email, phone"
-                value={queryValue}
-                onChange={(event) => onSearchChange(event.currentTarget.value)}
-              />
-
-              <s-grid gridTemplateColumns="repeat(auto-fit, minmax(160px, 1fr))" gap="small-200">
-                <s-select label="Fulfillment" value={f.fulfillment} onChange={(e) => navigateWith({ fulfillment: e.currentTarget.value })}>
-                  <s-option value="ANY">Any</s-option>
-                  <s-option value="FULFILLED">Fulfilled</s-option>
-                  <s-option value="UNFULFILLED">Unfulfilled</s-option>
-                  <s-option value="PARTIALLY_FULFILLED">Partially fulfilled</s-option>
-                </s-select>
-                <s-select label="Payment status" value={f.financial} onChange={(e) => navigateWith({ financial: e.currentTarget.value })}>
-                  <s-option value="ANY">Any</s-option>
-                  <s-option value="PAID">Paid</s-option>
-                  <s-option value="PENDING">Pending payment</s-option>
-                  <s-option value="AUTHORIZED">Authorized</s-option>
-                  <s-option value="REFUNDED">Refunded</s-option>
-                </s-select>
-                <s-select label="Date" value={f.dateRange} onChange={(e) => navigateWith({ range: e.currentTarget.value })}>
-                  <s-option value="ANY">Any time</s-option>
-                  <s-option value="TODAY">Today</s-option>
-                  <s-option value="LAST_7_DAYS">Last 7 days</s-option>
-                  <s-option value="LAST_30_DAYS">Last 30 days</s-option>
-                </s-select>
-                <s-text-field
-                  label="Tag"
-                  placeholder="Filter by tag"
-                  value={f.tag ?? ""}
-                  onChange={(e) => navigateWith({ tag: e.currentTarget.value || undefined })}
-                />
-              </s-grid>
-
-              {appliedFilters.length ? (
-                <s-stack direction="inline" gap="small-200" alignItems="center">
-                  {appliedFilters.map((af) => (
-                    <s-button key={af.key} variant="tertiary" onClick={af.onRemove}>
-                      {af.label} &times;
-                    </s-button>
-                  ))}
-                  <s-button variant="tertiary" onClick={() => navigate("/app/orders")}>Clear all</s-button>
-                </s-stack>
-              ) : null}
-
-              {selectedIds.length ? (
-                <s-box padding="small-200" background="subdued" borderRadius="base">
-                  <s-stack direction="inline" gap="small-200" alignItems="center">
-                    <s-text type="strong">{selectedIds.length} selected</s-text>
-                    <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("addTag")}>Add tag</s-button>
-                    <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("removeTag")}>Remove tag</s-button>
-                    <s-button
-                      variant="tertiary"
-                      onClick={() => navigate(`/app/print?ids=${selectedIds.map(encodeURIComponent).join(",")}`)}
-                    >
-                      Print selected
-                    </s-button>
-                    <s-button
-                      variant="tertiary"
-                      onClick={() =>
-                        selectedIds.slice(0, 10).forEach((id) =>
-                          window.open(adminOrderUrl(data.shopDomain, id), "_blank"),
-                        )
-                      }
-                    >
-                      Open in Shopify Admin
-                    </s-button>
-                  </s-stack>
-                </s-box>
-              ) : null}
-            </s-stack>
-          </s-box>
-
-          <s-table-header-row>
-            <s-table-header>
-              <s-checkbox label="Select all" checked={allSelected} onChange={toggleAll} />
-            </s-table-header>
-            {visibleColumns.map((c) => (
-              <s-table-header key={c.id}>
-                {SORTABLE.includes(c.id) ? (
-                  <s-clickable onClick={() => sortBy(c.id)}>
-                    {c.label}
-                    {data.sort.column === c.id ? (data.sort.direction === "asc" ? " ↑" : " ↓") : ""}
-                  </s-clickable>
-                ) : (
-                  c.label
-                )}
-              </s-table-header>
-            ))}
-          </s-table-header-row>
-          <s-table-body>
-            {data.orders.map((order) => (
-              <s-table-row key={order.shopifyOrderId}>
-                <s-table-cell>
-                  <s-checkbox
-                    label={`Select ${order.name}`}
-                    checked={selectedIds.includes(order.shopifyOrderId)}
-                    onChange={() => toggleRow(order.shopifyOrderId)}
-                  />
-                </s-table-cell>
-                {visibleColumns.map((column) => (
-                  <s-table-cell key={column.id}>{cellFor(column.id, order)}</s-table-cell>
+        <s-box padding="base">
+          <s-stack direction="block" gap="base">
+            <s-stack direction="inline" gap="base" alignItems="end">
+              <s-select
+                label="Saved views"
+                value=""
+                onChange={(event) => {
+                  const viewId = event.currentTarget.value;
+                  const view = data.views.find((v) => v.id === viewId);
+                  if (!view) {
+                    navigate("/app/orders");
+                    return;
+                  }
+                  navigate(
+                    `/app/orders${buildOrdersSearch(
+                      view.filters as unknown as typeof data.filters,
+                      (view.sort as never) ?? data.sort,
+                      (view.columns as OrderColumnId[])?.length ? (view.columns as OrderColumnId[]) : data.columns,
+                    )}`,
+                  );
+                }}
+              >
+                <s-option value="">All orders</s-option>
+                {data.views.map((v) => (
+                  <s-option key={v.id} value={v.id}>{v.name}</s-option>
                 ))}
-              </s-table-row>
-            ))}
-          </s-table-body>
-        </s-table>
+              </s-select>
+              <ColumnChooser
+                selected={data.columns}
+                onApply={(columns) => {
+                  fetcher.submit({ intent: "columns", columns: columns.join(",") }, { method: "post" });
+                  navigateWith({ cols: columns.join(",") });
+                }}
+              />
+            </s-stack>
 
-        {data.orders.length === 0 ? (
+            <s-search-field
+              label="Search orders"
+              placeholder="Search order number, customer, email, phone"
+              value={queryValue}
+              onChange={(event) => onSearchChange(event.currentTarget.value)}
+            />
+
+            <s-grid gridTemplateColumns="repeat(auto-fit, minmax(160px, 1fr))" gap="small-200">
+              <s-select label="Fulfillment" value={f.fulfillment} onChange={(e) => navigateWith({ fulfillment: e.currentTarget.value })}>
+                <s-option value="ANY">Any</s-option>
+                <s-option value="FULFILLED">Fulfilled</s-option>
+                <s-option value="UNFULFILLED">Unfulfilled</s-option>
+                <s-option value="PARTIALLY_FULFILLED">Partially fulfilled</s-option>
+              </s-select>
+              <s-select label="Payment status" value={f.financial} onChange={(e) => navigateWith({ financial: e.currentTarget.value })}>
+                <s-option value="ANY">Any</s-option>
+                <s-option value="PAID">Paid</s-option>
+                <s-option value="PENDING">Pending payment</s-option>
+                <s-option value="AUTHORIZED">Authorized</s-option>
+                <s-option value="REFUNDED">Refunded</s-option>
+              </s-select>
+              <s-select label="Date" value={f.dateRange} onChange={(e) => navigateWith({ range: e.currentTarget.value })}>
+                <s-option value="ANY">Any time</s-option>
+                <s-option value="TODAY">Today</s-option>
+                <s-option value="LAST_7_DAYS">Last 7 days</s-option>
+                <s-option value="LAST_30_DAYS">Last 30 days</s-option>
+              </s-select>
+              <s-text-field
+                label="Tag"
+                placeholder="Filter by tag"
+                value={f.tag ?? ""}
+                onChange={(e) => navigateWith({ tag: e.currentTarget.value || undefined })}
+              />
+            </s-grid>
+
+            {appliedFilters.length ? (
+              <s-stack direction="inline" gap="small-200" alignItems="center">
+                {appliedFilters.map((af) => (
+                  <s-button key={af.key} variant="tertiary" onClick={af.onRemove}>
+                    {af.label} &times;
+                  </s-button>
+                ))}
+                <s-button variant="tertiary" tone="critical" onClick={() => navigate("/app/orders")}>Clear all</s-button>
+              </s-stack>
+            ) : null}
+
+            {selectedIds.length ? (
+              <s-box padding="small-200" background="subdued" borderRadius="base">
+                <s-stack direction="inline" gap="small-200" alignItems="center">
+                  <s-text type="strong">{selectedIds.length} selected</s-text>
+                  <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("addTag")}>Add tag</s-button>
+                  <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("removeTag")}>Remove tag</s-button>
+                </s-stack>
+              </s-box>
+            ) : null}
+          </s-stack>
+        </s-box>
+
+        {data.orders.length ? (
+          <s-box>
+            <s-box padding="small-200" background="subdued">
+              <s-grid gridTemplateColumns={gridTemplate} gap="small-200" alignItems="center">
+                <s-checkbox accessibilityLabel="Select all orders" checked={allSelected} onChange={toggleAll} />
+                {visibleColumns.map((c) =>
+                  SORTABLE.includes(c.id) ? (
+                    <s-clickable key={c.id} onClick={() => sortBy(c.id)}>
+                      <s-text type="strong">
+                        {c.label}
+                        {data.sort.column === c.id ? (data.sort.direction === "asc" ? " ↑" : " ↓") : ""}
+                      </s-text>
+                    </s-clickable>
+                  ) : (
+                    <s-text key={c.id} type="strong">{c.label}</s-text>
+                  ),
+                )}
+              </s-grid>
+            </s-box>
+
+            {data.orders.map((order) => (
+              <s-box key={order.shopifyOrderId}>
+                <s-divider />
+                <s-box padding="small-200">
+                  <s-grid gridTemplateColumns={gridTemplate} gap="small-200" alignItems="center">
+                    <s-checkbox
+                      accessibilityLabel={`Select ${order.name}`}
+                      checked={selectedIds.includes(order.shopifyOrderId)}
+                      onChange={() => toggleRow(order.shopifyOrderId)}
+                    />
+                    {visibleColumns.map((column) => (
+                      <s-box key={column.id}>{cellFor(column.id, order, data.shopDomain)}</s-box>
+                    ))}
+                  </s-grid>
+                </s-box>
+                {order.items.length ? (
+                  <s-box padding="base" background="subdued">
+                    <LineItemsBand order={order} />
+                  </s-box>
+                ) : null}
+              </s-box>
+            ))}
+
+            <s-divider />
+            <s-box padding="base">
+              <s-stack direction="inline" gap="small-200" justifyContent="center">
+                <s-button
+                  disabled={!(data.pageInfo.hasPreviousPage && data.pageInfo.startCursor)}
+                  onClick={() => goToPage(data.pageInfo.startCursor, "backward")}
+                >
+                  Previous
+                </s-button>
+                <s-button
+                  disabled={!(data.pageInfo.hasNextPage && data.pageInfo.endCursor)}
+                  onClick={() => goToPage(data.pageInfo.endCursor, "forward")}
+                >
+                  Next
+                </s-button>
+              </s-stack>
+            </s-box>
+          </s-box>
+        ) : (
           <s-box padding="large-100">
             <s-stack direction="block" gap="base" alignItems="center">
               <s-heading>
@@ -459,7 +513,7 @@ export default function OrdersPage() {
               </s-paragraph>
             </s-stack>
           </s-box>
-        ) : null}
+        )}
       </s-section>
 
       <s-modal id={BULK_MODAL} heading={pendingBulk ? BULK_TITLES[pendingBulk] : "Bulk action"}>
@@ -472,7 +526,7 @@ export default function OrdersPage() {
         <s-button
           slot="primary-action"
           variant="primary"
-          disabled={applyDisabled}
+          disabled={!tagValue.trim()}
           commandFor={BULK_MODAL}
           command="--hide"
           onClick={confirmBulkModal}

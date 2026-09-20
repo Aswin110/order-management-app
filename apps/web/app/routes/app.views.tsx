@@ -60,7 +60,7 @@ export default function SavedViewsPage() {
   const navigate = useNavigate();
 
   return (
-    <s-page heading="Saved views">
+    <s-page heading="Saved views" inlineSize="large">
       {fetcher.data?.message ? (
         <s-banner tone={fetcher.data.ok ? "success" : "critical"}>
           {fetcher.data.message}

@@ -1,10 +1,11 @@
+// Columns of the order summary row. Line items are not a column: they
+// always render in the full-width band under each order.
 export const ORDER_COLUMNS = [
   { id: "name", label: "Order" },
   { id: "orderedAt", label: "Date" },
   { id: "customerName", label: "Customer" },
   { id: "phone", label: "Phone" },
   { id: "email", label: "Email" },
-  { id: "items", label: "Items" },
   { id: "totalPrice", label: "Total" },
   { id: "financialStatus", label: "Payment" },
   { id: "fulfillmentStatus", label: "Fulfillment" },
@@ -19,7 +20,6 @@ export const DEFAULT_COLUMNS: OrderColumnId[] = [
   "orderedAt",
   "customerName",
   "phone",
-  "items",
   "totalPrice",
   "financialStatus",
   "fulfillmentStatus",
