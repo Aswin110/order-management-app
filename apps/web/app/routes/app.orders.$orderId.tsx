@@ -18,7 +18,7 @@ import { listStaff, assignOrder, unassignOrder } from "../services/staff.server"
 import { adminOrderUrl } from "../lib/admin-url";
 import { isCodOrder } from "@order-operations/shared";
 import { CodBadge } from "../components/CodBadge";
-import { FinancialStatusBadge, FulfillmentStatusBadge, RiskBadge } from "../components/StatusBadges";
+import { FinancialStatusBadge, FulfillmentStatusBadge } from "../components/StatusBadges";
 import type { CodStatus } from "@prisma/client";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -260,7 +260,6 @@ export default function OrderDetailsPage() {
             <s-stack direction="inline" gap="small-200">
               <FinancialStatusBadge status={order.displayFinancialStatus ?? null} />
               <FulfillmentStatusBadge status={order.displayFulfillmentStatus ?? null} />
-              <RiskBadge level={order.riskLevel ?? null} />
             </s-stack>
             {order.cancelledAt ? <s-badge tone="critical">Cancelled</s-badge> : null}
             {order.tags?.length ? (

@@ -30,7 +30,6 @@ const ORDER_FIELDS = `#graphql
     totalShippingPriceSet { shopMoney { amount } }
     totalTaxSet { shopMoney { amount } }
     tags
-    riskLevel
     note
     paymentGatewayNames
     customer { displayName firstName lastName email phone }
@@ -99,7 +98,6 @@ const ORDER_DETAILS_QUERY = `#graphql
       totalShippingPriceSet { shopMoney { amount } }
       totalTaxSet { shopMoney { amount } }
       tags
-      riskLevel
       note
       paymentGatewayNames
       customer { displayName firstName lastName email phone }

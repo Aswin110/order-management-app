@@ -11,7 +11,6 @@ export const ORDER_COLUMNS = [
   { id: "notes", label: "Notes" },
   { id: "codStatus", label: "COD status" },
   { id: "assignedStaff", label: "Assigned staff" },
-  { id: "riskLevel", label: "Risk level" },
 ] as const;
 
 export type OrderColumnId = (typeof ORDER_COLUMNS)[number]["id"];
