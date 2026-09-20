@@ -9,13 +9,10 @@ import {
 } from "@order-operations/shared";
 
 import { authenticate } from "../shopify.server";
-import { ensureShop } from "../services/shop.server";
 import { fetchOrdersByIds } from "../services/shopify-orders.server";
-import { getOrderOverlays } from "../services/overlay.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session, admin } = await authenticate.admin(request);
-  const shop = await ensureShop(session.shop);
+  const { admin } = await authenticate.admin(request);
   const url = new URL(request.url);
   const ids = (url.searchParams.get("ids") ?? "")
     .split(",")
@@ -24,11 +21,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     .slice(0, 50);
 
   const nodes = await fetchOrdersByIds(admin, ids);
-  const overlays = await getOrderOverlays(shop.id, nodes.map((n) => n.id));
-
-  const orders: OrderListItem[] = nodes.map((n) =>
-    mapAdminOrderToListItem(n, overlays.get(n.id) ?? null),
-  );
+  const orders: OrderListItem[] = nodes.map(mapAdminOrderToListItem);
   return { orders };
 };
 
@@ -47,8 +40,7 @@ export default function PrintPage() {
         <thead>
           <tr style={{ textAlign: "left", borderBottom: "2px solid #000" }}>
             <th>Order</th><th>Date</th><th>Customer</th><th>Phone</th><th>Items</th>
-            <th>Payment</th><th>Fulfillment</th><th>Total</th>
-            <th>COD</th><th>Staff</th><th>Note</th>
+            <th>Payment</th><th>Fulfillment</th><th>Total</th><th>COD</th>
           </tr>
         </thead>
         <tbody>
@@ -71,9 +63,7 @@ export default function PrintPage() {
               <td>{o.financialStatus ?? ""}</td>
               <td>{o.fulfillmentStatus ?? ""}</td>
               <td>{o.totalPrice ? `${o.currency ?? ""} ${o.totalPrice}` : ""}</td>
-              <td>{o.cod ? o.codStatus : ""}</td>
-              <td>{o.assignedStaffName ?? ""}</td>
-              <td>{o.latestNote ?? ""}</td>
+              <td>{o.cod ? "Yes" : ""}</td>
             </tr>
           ))}
         </tbody>

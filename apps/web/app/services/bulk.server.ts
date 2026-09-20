@@ -1,11 +1,8 @@
-// Inline bulk actions. Selections are capped at one page of orders, so
-// actions run directly in the web process against Shopify (tags) and the
-// operational overlay (notes, COD, assignment) - no worker or queue.
+// Inline bulk tagging. Selections are capped at one page of orders, so the
+// mutations run directly in the web process against Shopify - no worker or
+// queue. Tags are the only order data this app writes.
 
 import type { BulkActionPayload } from "@order-operations/shared";
-import { addOrderNote } from "./notes.server";
-import { assignOrder, unassignOrder } from "./staff.server";
-import { setCodStatus } from "./cod.server";
 
 interface AdminGraphql {
   graphql: (
@@ -59,17 +56,15 @@ async function mutateTags(
 }
 
 /**
- * Applies a bulk action immediately. Tag changes are written to Shopify
- * (source of truth); notes, COD status, and assignment are app-internal
- * overlay data. Returns how many orders were updated.
+ * Applies a bulk tag change immediately, writing to Shopify (the source of
+ * truth). Returns how many orders were updated.
  */
 export async function applyBulkAction(options: {
   admin: AdminGraphql;
-  shopId: string;
   shopifyOrderIds: string[];
   action: BulkActionPayload;
 }) {
-  const { admin, shopId, shopifyOrderIds, action } = options;
+  const { admin, shopifyOrderIds, action } = options;
   if (!shopifyOrderIds.length) throw new Error("No orders selected");
   if (shopifyOrderIds.length > MAX_INLINE_BULK) {
     throw new Error(`Too many orders selected (max ${MAX_INLINE_BULK} per bulk action)`);
@@ -86,34 +81,6 @@ export async function applyBulkAction(options: {
       const tag = action.tag.trim();
       if (!tag) throw new Error("Tag cannot be empty");
       await mutateTags(admin, TAGS_REMOVE_MUTATION, shopifyOrderIds, tag);
-      break;
-    }
-    case "ADD_NOTE": {
-      for (const id of shopifyOrderIds) {
-        await addOrderNote({ shopId, shopifyOrderId: id, content: action.content });
-      }
-      break;
-    }
-    case "ASSIGN_STAFF": {
-      for (const id of shopifyOrderIds) {
-        await assignOrder({ shopId, shopifyOrderId: id, staffId: action.staffId });
-      }
-      break;
-    }
-    case "UNASSIGN_STAFF": {
-      for (const id of shopifyOrderIds) {
-        await unassignOrder({ shopId, shopifyOrderId: id });
-      }
-      break;
-    }
-    case "SET_COD_STATUS": {
-      for (const id of shopifyOrderIds) {
-        await setCodStatus({
-          shopId,
-          shopifyOrderId: id,
-          codStatus: action.codStatus as never,
-        });
-      }
       break;
     }
   }

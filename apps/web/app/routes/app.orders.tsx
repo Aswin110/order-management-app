@@ -18,13 +18,10 @@ import { authenticate } from "../shopify.server";
 import { ensureShop } from "../services/shop.server";
 import { getOrCreateSettings, updateSettings } from "../services/settings.server";
 import { fetchOrdersPage } from "../services/shopify-orders.server";
-import { getOrderOverlays } from "../services/overlay.server";
-import { listStaff } from "../services/staff.server";
 import { listSavedViews, createSavedView } from "../services/views.server";
 import { applyBulkAction } from "../services/bulk.server";
 import { parseOrdersPageParams, buildOrdersSearch } from "../lib/params";
 import { adminOrderUrl } from "../lib/admin-url";
-import { CodBadge } from "../components/CodBadge";
 import { FinancialStatusBadge, FulfillmentStatusBadge } from "../components/StatusBadges";
 import { ColumnChooser } from "../components/ColumnChooser";
 
@@ -44,15 +41,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     direction: params.direction,
   });
 
-  const [overlayMap, staff, views] = await Promise.all([
-    getOrderOverlays(shop.id, page.orders.map((o) => o.id)),
-    listStaff(shop.id),
-    listSavedViews(shop.id),
-  ]);
-
-  const orders = page.orders.map((node) =>
-    mapAdminOrderToListItem(node, overlayMap.get(node.id) ?? null),
-  );
+  const views = await listSavedViews(shop.id);
+  const orders = page.orders.map(mapAdminOrderToListItem);
 
   return {
     shopDomain: session.shop,
@@ -62,7 +52,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     filters: params.filters,
     sort: params.sort,
     columns: params.columns,
-    staff: staff.map((s) => ({ id: s.id, name: s.name })),
     views: views.map((v) => ({ id: v.id, name: v.name, filters: v.filters, sort: v.sort, columns: v.columns })),
   };
 };
@@ -100,12 +89,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (intent === "bulk") {
       const actionPayload = JSON.parse(String(formData.get("bulkAction"))) as BulkActionPayload;
       const shopifyOrderIds = JSON.parse(String(formData.get("orderIds") ?? "[]")) as string[];
-      const result = await applyBulkAction({
-        admin,
-        shopId: shop.id,
-        shopifyOrderIds,
-        action: actionPayload,
-      });
+      const result = await applyBulkAction({ admin, shopifyOrderIds, action: actionPayload });
       return { ok: true, message: `Bulk action applied to ${result.applied} orders` };
     }
 
@@ -171,6 +155,8 @@ function cellFor(column: OrderColumnId, order: OrderRow) {
       return order.customerName ?? "-";
     case "phone":
       return order.phone ?? "-";
+    case "email":
+      return order.email ?? "-";
     case "items":
       return <ItemsCell order={order} />;
     case "financialStatus":
@@ -183,14 +169,8 @@ function cellFor(column: OrderColumnId, order: OrderRow) {
       return order.tags.length ? (
         <s-stack direction="inline" gap="small-500">{order.tags.slice(0, 3).map((t) => <s-badge key={t} tone="neutral">{t}</s-badge>)}</s-stack>
       ) : "-";
-    case "notes":
-      return order.latestNote ? (
-        <s-text color="subdued">{order.latestNote}</s-text>
-      ) : "-";
-    case "codStatus":
-      return order.cod ? <CodBadge status={order.codStatus} /> : "-";
-    case "assignedStaff":
-      return order.assignedStaffName ?? "-";
+    case "cod":
+      return order.cod ? <s-badge tone="warning">COD</s-badge> : "-";
     default:
       return "-";
   }
@@ -204,9 +184,6 @@ const SAVE_VIEW_MODAL = "save-view-modal";
 const BULK_TITLES: Record<string, string> = {
   addTag: "Add tag",
   removeTag: "Remove tag",
-  addNote: "Add internal note",
-  assign: "Assign staff",
-  cod: "Mark COD status",
 };
 
 export default function OrdersPage() {
@@ -219,9 +196,6 @@ export default function OrdersPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingBulk, setPendingBulk] = useState<null | string>(null);
   const [tagValue, setTagValue] = useState("");
-  const [noteValue, setNoteValue] = useState("");
-  const [staffValue, setStaffValue] = useState("");
-  const [codValue, setCodValue] = useState("VERIFIED");
   const [viewName, setViewName] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -271,19 +245,11 @@ export default function OrdersPage() {
   const confirmBulkModal = () => {
     if (pendingBulk === "addTag") runBulk({ type: "ADD_TAG", tag: tagValue.trim() });
     if (pendingBulk === "removeTag") runBulk({ type: "REMOVE_TAG", tag: tagValue.trim() });
-    if (pendingBulk === "addNote") runBulk({ type: "ADD_NOTE", content: noteValue.trim() });
-    if (pendingBulk === "assign") runBulk({ type: "ASSIGN_STAFF", staffId: staffValue });
-    if (pendingBulk === "cod") runBulk({ type: "SET_COD_STATUS", codStatus: codValue });
     setPendingBulk(null);
     setTagValue("");
-    setNoteValue("");
   };
 
-  const applyDisabled =
-    (pendingBulk === "addTag" || pendingBulk === "removeTag") ? !tagValue.trim()
-    : pendingBulk === "addNote" ? !noteValue.trim()
-    : pendingBulk === "assign" ? !staffValue
-    : false;
+  const applyDisabled = !tagValue.trim();
 
   const appliedFilters: Array<{ key: string; label: string; onRemove: () => void }> = [];
   const f = data.filters;
@@ -423,10 +389,6 @@ export default function OrdersPage() {
                     <s-text type="strong">{selectedIds.length} selected</s-text>
                     <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("addTag")}>Add tag</s-button>
                     <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("removeTag")}>Remove tag</s-button>
-                    <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("addNote")}>Add note</s-button>
-                    <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("assign")}>Assign staff</s-button>
-                    <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("cod")}>Mark COD status</s-button>
-                    <s-button variant="tertiary" onClick={() => runBulk({ type: "UNASSIGN_STAFF" })}>Unassign staff</s-button>
                     <s-button
                       variant="tertiary"
                       onClick={() => navigate(`/app/print?ids=${selectedIds.map(encodeURIComponent).join(",")}`)}
@@ -505,28 +467,7 @@ export default function OrdersPage() {
           <s-paragraph color="subdued">
             {selectedIds.length} order{selectedIds.length === 1 ? "" : "s"} selected
           </s-paragraph>
-          {pendingBulk === "addTag" || pendingBulk === "removeTag" ? (
-            <s-text-field label="Tag" value={tagValue} onChange={(e) => setTagValue(e.currentTarget.value)} />
-          ) : null}
-          {pendingBulk === "addNote" ? (
-            <s-text-area label="Note" rows={3} value={noteValue} onChange={(e) => setNoteValue(e.currentTarget.value)} />
-          ) : null}
-          {pendingBulk === "assign" ? (
-            <s-select label="Staff member" value={staffValue} onChange={(e) => setStaffValue(e.currentTarget.value)}>
-              <s-option value="">Choose staff</s-option>
-              {data.staff.map((st) => (
-                <s-option key={st.id} value={st.id}>{st.name}</s-option>
-              ))}
-            </s-select>
-          ) : null}
-          {pendingBulk === "cod" ? (
-            <s-select label="COD status" value={codValue} onChange={(e) => setCodValue(e.currentTarget.value)}>
-              <s-option value="PENDING">Pending</s-option>
-              <s-option value="VERIFIED">Verified</s-option>
-              <s-option value="FAILED">Failed</s-option>
-              <s-option value="CANCELLED">Cancelled</s-option>
-            </s-select>
-          ) : null}
+          <s-text-field label="Tag" value={tagValue} onChange={(e) => setTagValue(e.currentTarget.value)} />
         </s-stack>
         <s-button
           slot="primary-action"

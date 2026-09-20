@@ -14,9 +14,8 @@ export const CSV_HEADERS = [
   "Currency",
   "Financial status",
   "Fulfillment status",
-  "COD status",
+  "COD",
   "Tags",
-  "Assigned staff",
 ] as const;
 
 export function escapeCsvCell(value: string): string {
@@ -38,9 +37,8 @@ export function orderToCsvRow(order: OrderListItem): string {
     order.currency ?? "",
     order.financialStatus ?? "",
     order.fulfillmentStatus ?? "",
-    order.codStatus,
+    order.cod ? "Yes" : "No",
     order.tags.join(" "),
-    order.assignedStaffName ?? "",
   ];
   return cells.map(escapeCsvCell).join(",");
 }

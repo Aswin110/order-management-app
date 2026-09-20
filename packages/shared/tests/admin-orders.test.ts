@@ -64,7 +64,6 @@ describe("mapAdminOrderToListItem", () => {
     expect(row.currency).toBe("INR");
     expect(row.itemCount).toBe(3);
     expect(row.cod).toBe(true);
-    expect(row.codStatus).toBe("PENDING"); // default for a fresh COD order
 
     const [mug, wrap] = row.items;
     expect(mug!.variantTitle).toBe("White / 325ml");
@@ -81,24 +80,9 @@ describe("mapAdminOrderToListItem", () => {
     expect(row.hasMoreItems).toBe(false);
   });
 
-  it("merges the operational overlay", () => {
-    const row = mapAdminOrderToListItem(node, {
-      codStatus: "VERIFIED",
-      assignedStaffId: "staff-1",
-      assignedStaffName: "Anjali",
-      notesCount: 2,
-      latestNote: "Call before shipping",
-    });
-    expect(row.codStatus).toBe("VERIFIED");
-    expect(row.assignedStaffName).toBe("Anjali");
-    expect(row.notesCount).toBe(2);
-    expect(row.latestNote).toBe("Call before shipping");
-  });
-
-  it("does not force PENDING on non-COD orders", () => {
+  it("flags non-COD gateways as not COD", () => {
     const row = mapAdminOrderToListItem({ ...node, paymentGatewayNames: ["shopify_payments"] });
     expect(row.cod).toBe(false);
-    expect(row.codStatus).toBe("NOT_COD");
   });
 
   it("tolerates missing optional data", () => {

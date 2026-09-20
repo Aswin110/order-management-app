@@ -2,31 +2,26 @@ import { describe, it, expect } from "vitest";
 import { buildOrdersCsv, escapeCsvCell, CSV_HEADERS } from "../src/csv";
 import { mapAdminOrderToListItem } from "../src/admin-orders";
 
-const row = mapAdminOrderToListItem(
-  {
-    id: "gid://shopify/Order/10491",
-    name: "#10491",
-    createdAt: "2026-09-19T05:30:00Z",
-    displayFinancialStatus: "PENDING",
-    displayFulfillmentStatus: "UNFULFILLED",
-    totalPriceSet: { shopMoney: { amount: "2499.00", currencyCode: "INR" } },
-    tags: ["Priority"],
-    paymentGatewayNames: ["Cash on Delivery (COD)"],
-    customer: { displayName: "John, Mathew", email: "john@example.com", phone: "+919999999999" },
-    lineItems: {
-      nodes: [
-        { id: "li1", title: "Custom Mug", variantTitle: "White", quantity: 2, customAttributes: [] },
-      ],
-    },
+const row = mapAdminOrderToListItem({
+  id: "gid://shopify/Order/10491",
+  name: "#10491",
+  createdAt: "2026-09-19T05:30:00Z",
+  displayFinancialStatus: "PENDING",
+  displayFulfillmentStatus: "UNFULFILLED",
+  totalPriceSet: { shopMoney: { amount: "2499.00", currencyCode: "INR" } },
+  tags: ["Priority"],
+  paymentGatewayNames: ["Cash on Delivery (COD)"],
+  customer: {
+    displayName: 'John, "Johnny" Mathew',
+    email: "john@example.com",
+    phone: "+919999999999",
   },
-  {
-    codStatus: "PENDING",
-    assignedStaffId: "staff-1",
-    assignedStaffName: 'Anjali "AJ"',
-    notesCount: 0,
-    latestNote: null,
+  lineItems: {
+    nodes: [
+      { id: "li1", title: "Custom Mug", variantTitle: "White", quantity: 2, customAttributes: [] },
+    ],
   },
-);
+});
 
 describe("escapeCsvCell", () => {
   it("escapes commas and quotes", () => {
@@ -48,7 +43,7 @@ describe("buildOrdersCsv", () => {
   it("includes item summaries, and escapes commas and quotes", () => {
     const csv = buildOrdersCsv([row]);
     expect(csv).toContain("2 x Custom Mug (White)");
-    expect(csv).toContain('"John, Mathew"');
-    expect(csv).toContain('"Anjali ""AJ"""');
+    // One cell exercising both comma and quote escaping.
+    expect(csv).toContain('"John, ""Johnny"" Mathew"');
   });
 });

@@ -3,14 +3,13 @@ export const ORDER_COLUMNS = [
   { id: "orderedAt", label: "Date" },
   { id: "customerName", label: "Customer" },
   { id: "phone", label: "Phone" },
+  { id: "email", label: "Email" },
   { id: "items", label: "Items" },
   { id: "totalPrice", label: "Total" },
   { id: "financialStatus", label: "Payment" },
   { id: "fulfillmentStatus", label: "Fulfillment" },
+  { id: "cod", label: "COD" },
   { id: "tags", label: "Tags" },
-  { id: "notes", label: "Notes" },
-  { id: "codStatus", label: "COD status" },
-  { id: "assignedStaff", label: "Assigned staff" },
 ] as const;
 
 export type OrderColumnId = (typeof ORDER_COLUMNS)[number]["id"];
@@ -19,11 +18,11 @@ export const DEFAULT_COLUMNS: OrderColumnId[] = [
   "name",
   "orderedAt",
   "customerName",
+  "phone",
   "items",
   "totalPrice",
   "financialStatus",
   "fulfillmentStatus",
+  "cod",
   "tags",
-  "notes",
-  "codStatus",
 ];

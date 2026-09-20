@@ -1,7 +1,8 @@
 // Pure mapping from Shopify Admin GraphQL order nodes to the flat,
 // serializable shapes the UI renders. No database and no network here:
 // the same mapper is unit-tested and shared by the list page, detail
-// page, print view, and CSV export.
+// page, print view, and CSV export. Every field comes from Shopify -
+// the app stores nothing about an order.
 
 import { isCodOrder } from "./cod";
 
@@ -68,15 +69,6 @@ export interface AdminOrderNode {
   } | null;
 }
 
-/** App-internal operational data overlaid onto the live Shopify order. */
-export interface OrderOpsOverlayData {
-  codStatus: string;
-  assignedStaffId: string | null;
-  assignedStaffName: string | null;
-  notesCount: number;
-  latestNote: string | null;
-}
-
 export interface OrderListItem {
   shopifyOrderId: string;
   name: string;
@@ -92,12 +84,8 @@ export interface OrderListItem {
   items: OrderLineItem[];
   hasMoreItems: boolean;
   tags: string[];
+  /** Derived from Shopify's payment gateway names, not stored anywhere. */
   cod: boolean;
-  codStatus: string;
-  assignedStaffId: string | null;
-  assignedStaffName: string | null;
-  notesCount: number;
-  latestNote: string | null;
   cancelledAt: string | null;
 }
 
@@ -139,27 +127,13 @@ export function mapLineItem(item: AdminLineItemNode): OrderLineItem {
   };
 }
 
-const DEFAULT_OVERLAY: OrderOpsOverlayData = {
-  codStatus: "NOT_COD",
-  assignedStaffId: null,
-  assignedStaffName: null,
-  notesCount: 0,
-  latestNote: null,
-};
-
 /**
- * Maps one live Admin API order node plus its operational overlay into the
- * flat row the orders list renders. Never throws on missing optional data.
+ * Maps one live Admin API order node into the flat row the orders list
+ * renders. Never throws on missing optional data.
  */
-export function mapAdminOrderToListItem(
-  order: AdminOrderNode,
-  overlay?: OrderOpsOverlayData | null,
-): OrderListItem {
-  const o = overlay ?? DEFAULT_OVERLAY;
+export function mapAdminOrderToListItem(order: AdminOrderNode): OrderListItem {
   const nodes = order.lineItems?.nodes ?? [];
   const items = nodes.map(mapLineItem);
-  const gatewayNames = order.paymentGatewayNames ?? [];
-  const cod = isCodOrder(gatewayNames);
 
   return {
     shopifyOrderId: order.id,
@@ -176,13 +150,7 @@ export function mapAdminOrderToListItem(
     items,
     hasMoreItems: Boolean(order.lineItems?.pageInfo?.hasNextPage),
     tags: (order.tags ?? []).filter((t): t is string => typeof t === "string" && t.length > 0),
-    cod,
-    // An order is only shown as COD-tracked when the gateway says COD.
-    codStatus: cod ? (o.codStatus === "NOT_COD" ? "PENDING" : o.codStatus) : o.codStatus,
-    assignedStaffId: o.assignedStaffId,
-    assignedStaffName: o.assignedStaffName,
-    notesCount: o.notesCount,
-    latestNote: o.latestNote,
+    cod: isCodOrder(order.paymentGatewayNames ?? []),
     cancelledAt: order.cancelledAt ?? null,
   };
 }

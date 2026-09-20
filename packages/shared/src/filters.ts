@@ -1,19 +1,10 @@
 import { z } from "zod";
 
-export const codStatusSchema = z.enum([
-  "NOT_COD",
-  "PENDING",
-  "VERIFIED",
-  "FAILED",
-  "CANCELLED",
-]);
-
 /**
  * Filters that translate directly into the Shopify Admin order search
- * syntax (see buildOrderSearchQuery). Anything that cannot be expressed
- * as a Shopify query (COD status, staff assignment, internal notes)
- * deliberately does not live here: the orders list is always a live
- * Shopify query, never a filtered local cache.
+ * syntax (see buildOrderSearchQuery). Every filter must be expressible as
+ * a Shopify query: the orders list is always a live Shopify query, never
+ * a filtered local cache.
  */
 export const orderFiltersSchema = z.object({
   fulfillment: z

@@ -2,10 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   savedView: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
-  orderOpsMeta: { upsert: vi.fn(), updateMany: vi.fn() },
-  orderNote: { create: vi.fn() },
-  orderAssignment: { create: vi.fn() },
-  staff: { findFirst: vi.fn() },
   $transaction: vi.fn(async (fn: (tx: typeof mocks) => unknown) => fn(mocks)),
 }));
 
@@ -61,14 +57,13 @@ describe("saved views", () => {
   });
 });
 
-describe("bulk actions (inline, no worker)", () => {
+describe("bulk tagging (inline, no worker)", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("adds tags through the Shopify API for each selected order", async () => {
     const admin = mockAdmin();
     const result = await applyBulkAction({
       admin,
-      shopId: "shop-1",
       shopifyOrderIds: ["gid://shopify/Order/1", "gid://shopify/Order/2"],
       action: { type: "ADD_TAG", tag: "Priority" },
     });
@@ -84,7 +79,6 @@ describe("bulk actions (inline, no worker)", () => {
     await expect(
       applyBulkAction({
         admin,
-        shopId: "s",
         shopifyOrderIds: ["gid://shopify/Order/1"],
         action: { type: "ADD_TAG", tag: "x" },
       }),
@@ -94,7 +88,7 @@ describe("bulk actions (inline, no worker)", () => {
   it("rejects empty selections", async () => {
     await expect(
       applyBulkAction({
-        admin: mockAdmin(), shopId: "s", shopifyOrderIds: [], action: { type: "UNASSIGN_STAFF" },
+        admin: mockAdmin(), shopifyOrderIds: [], action: { type: "ADD_TAG", tag: "x" },
       }),
     ).rejects.toThrow("No orders selected");
   });
@@ -102,23 +96,8 @@ describe("bulk actions (inline, no worker)", () => {
   it("caps bulk size at one page of orders", async () => {
     const ids = Array.from({ length: MAX_INLINE_BULK + 1 }, (_, i) => `gid://shopify/Order/${i}`);
     await expect(
-      applyBulkAction({ admin: mockAdmin(), shopId: "s", shopifyOrderIds: ids, action: { type: "UNASSIGN_STAFF" } }),
+      applyBulkAction({ admin: mockAdmin(), shopifyOrderIds: ids, action: { type: "ADD_TAG", tag: "x" } }),
     ).rejects.toThrow("Too many");
   });
 
-  it("applies overlay actions without Shopify calls", async () => {
-    const admin = mockAdmin();
-    mocks.staff.findFirst.mockResolvedValue({ id: "staff-1" });
-    mocks.orderAssignment.create.mockResolvedValue({});
-    mocks.orderOpsMeta.upsert.mockResolvedValue({});
-    const result = await applyBulkAction({
-      admin,
-      shopId: "shop-1",
-      shopifyOrderIds: ["gid://shopify/Order/1"],
-      action: { type: "ASSIGN_STAFF", staffId: "staff-1" },
-    });
-    expect(result.applied).toBe(1);
-    expect(admin.graphql).not.toHaveBeenCalled();
-    expect(mocks.orderOpsMeta.upsert).toHaveBeenCalled();
-  });
 });

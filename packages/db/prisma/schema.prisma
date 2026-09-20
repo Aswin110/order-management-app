@@ -1,9 +1,9 @@
 // Order Operations - Prisma schema
-// Shopify is the source of truth for order data: the app reads orders live
-// through the Admin GraphQL API and never keeps a local order cache.
-// This database stores sessions plus the small amount of app-internal
-// operational data that does not exist in Shopify: notes, COD status,
-// staff assignment, saved views, and settings.
+// This app is an order viewer: Shopify is the source of truth for every
+// order, read live through the Admin GraphQL API. There is no local order
+// cache and no app-internal order state. The database holds only the
+// Shopify OAuth session plus each shop's viewing preferences - which
+// columns to show, how to sort, and any saved filter sets.
 
 generator client {
   provider = "prisma-client-js"
@@ -34,14 +34,6 @@ model Session {
   refreshTokenExpires DateTime?
 }
 
-enum CodStatus {
-  NOT_COD
-  PENDING
-  VERIFIED
-  FAILED
-  CANCELLED
-}
-
 model Shop {
   id          String   @id @default(cuid())
   shopDomain  String   @unique
@@ -50,96 +42,12 @@ model Shop {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  users        User[]
-  staff        Staff[]
-  opsMeta      OrderOpsMeta[]
-  notes        OrderNote[]
-  assignments  OrderAssignment[]
-  savedViews   SavedView[]
-  settings     ShopSettings?
+  savedViews SavedView[]
+  settings   ShopSettings?
 }
 
-model User {
-  id            String   @id @default(cuid())
-  shopId        String
-  shopifyUserId BigInt?
-  name          String
-  email         String?
-  createdAt     DateTime @default(now())
-
-  shop  Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  notes OrderNote[]
-
-  @@index([shopId])
-}
-
-model Staff {
-  id            String   @id @default(cuid())
-  shopId        String
-  name          String
-  email         String?
-  shopifyUserId BigInt?
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  shop        Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  assignments OrderAssignment[]
-  opsMeta     OrderOpsMeta[]
-
-  @@index([shopId])
-}
-
-// App-internal overlay for one Shopify order. Created lazily the first time
-// someone adds a note, sets a COD status, or assigns the order - order data
-// itself always comes live from Shopify, never from this table.
-model OrderOpsMeta {
-  id              String    @id @default(cuid())
-  shopId          String
-  shopifyOrderId  String
-  codStatus       CodStatus @default(NOT_COD)
-  assignedStaffId String?
-  notesCount      Int       @default(0)
-  latestNote      String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  shop          Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  assignedStaff Staff? @relation(fields: [assignedStaffId], references: [id], onDelete: SetNull)
-
-  @@unique([shopId, shopifyOrderId])
-  @@index([shopId])
-}
-
-model OrderNote {
-  id             String   @id @default(cuid())
-  shopId         String
-  shopifyOrderId String
-  authorId       String?
-  content        String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  shop   Shop  @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
-
-  @@index([shopId, shopifyOrderId, createdAt])
-}
-
-model OrderAssignment {
-  id             String   @id @default(cuid())
-  shopId         String
-  shopifyOrderId String
-  staffId        String
-  assignedAt     DateTime @default(now())
-
-  shop  Shop  @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
-
-  @@index([shopId, shopifyOrderId])
-  @@index([shopId, staffId])
-}
-
+// A named filter/sort/column combination, e.g. "Today's unfulfilled".
+// Purely a way to re-open a Shopify query; it stores no order data.
 model SavedView {
   id        String   @id @default(cuid())
   shopId    String
@@ -156,16 +64,13 @@ model SavedView {
 }
 
 model ShopSettings {
-  shopId              String   @id
-  highValueThreshold  Decimal  @default(5000) @db.Decimal(12, 2)
-  defaultViewId       String?
-  defaultSort         String? // e.g. "orderedAt:desc"
-  defaultColumns      String[] @default([])
-  rowsPerPage         Int      @default(50)
-  codEnabled          Boolean  @default(true)
-  defaultCodStatus    CodStatus @default(PENDING)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  shopId         String   @id
+  defaultViewId  String?
+  defaultSort    String? // e.g. "orderedAt:desc"
+  defaultColumns String[] @default([])
+  rowsPerPage    Int      @default(50)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
 }

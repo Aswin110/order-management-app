@@ -22,8 +22,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       defaultSort: settings.defaultSort ?? "orderedAt:desc",
       defaultViewId: settings.defaultViewId ?? "",
       rowsPerPage: settings.rowsPerPage,
-      codEnabled: settings.codEnabled,
-      defaultCodStatus: settings.defaultCodStatus,
     },
     views: views.map((v) => ({ id: v.id, name: v.name })),
   };
@@ -45,13 +43,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
       return { ok: true, message: "Order settings saved" };
     }
-    if (intent === "codSettings") {
-      await updateSettings(shop.id, {
-        codEnabled: String(formData.get("codEnabled")) === "true",
-        defaultCodStatus: String(formData.get("defaultCodStatus") ?? "PENDING") as never,
-      });
-      return { ok: true, message: "COD settings saved" };
-    }
     return { ok: false, message: `Unknown intent: ${intent}` };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Something went wrong" };
@@ -65,8 +56,6 @@ export default function SettingsPage() {
   const [defaultSort, setDefaultSort] = useState(settings.defaultSort);
   const [defaultViewId, setDefaultViewId] = useState(settings.defaultViewId);
   const [rowsPerPage, setRowsPerPage] = useState(String(settings.rowsPerPage));
-  const [codEnabled, setCodEnabled] = useState(settings.codEnabled);
-  const [defaultCodStatus, setDefaultCodStatus] = useState(settings.defaultCodStatus);
 
   return (
     <s-page heading="Settings">
@@ -117,40 +106,6 @@ export default function SettingsPage() {
               }
             >
               Save order settings
-            </s-button>
-          </s-stack>
-        </s-stack>
-      </s-section>
-
-      <s-section heading="COD workflow">
-        <s-stack direction="block" gap="base">
-          <s-select
-            label="COD workflow"
-            value={String(codEnabled)}
-            onChange={(event) => setCodEnabled(event.currentTarget.value === "true")}
-          >
-            <s-option value="true">Enabled</s-option>
-            <s-option value="false">Disabled</s-option>
-          </s-select>
-          <s-select
-            label="Default COD status for new COD orders"
-            value={defaultCodStatus}
-            onChange={(event) => setDefaultCodStatus(event.currentTarget.value as never)}
-          >
-            <s-option value="PENDING">Pending</s-option>
-            <s-option value="VERIFIED">Verified</s-option>
-          </s-select>
-          <s-stack direction="inline">
-            <s-button
-              variant="primary"
-              onClick={() =>
-                fetcher.submit(
-                  { intent: "codSettings", codEnabled: String(codEnabled), defaultCodStatus },
-                  { method: "post" },
-                )
-              }
-            >
-              Save COD settings
             </s-button>
           </s-stack>
         </s-stack>

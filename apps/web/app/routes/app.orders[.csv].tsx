@@ -8,7 +8,6 @@ import { authenticate } from "../shopify.server";
 import { ensureShop } from "../services/shop.server";
 import { getOrCreateSettings } from "../services/settings.server";
 import { fetchOrdersForCsv } from "../services/shopify-orders.server";
-import { getOrderOverlays } from "../services/overlay.server";
 import { parseOrdersPageParams } from "../lib/params";
 
 export const CSV_EXPORT_LIMIT = 500;
@@ -26,8 +25,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     sort: params.sort,
     maxOrders: CSV_EXPORT_LIMIT,
   });
-  const overlays = await getOrderOverlays(shop.id, nodes.map((n) => n.id));
-  const orders = nodes.map((n) => mapAdminOrderToListItem(n, overlays.get(n.id) ?? null));
+  const orders = nodes.map(mapAdminOrderToListItem);
 
   const csv = buildOrdersCsv(orders);
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");

@@ -10,13 +10,10 @@ export async function getOrCreateSettings(shopId: string) {
 }
 
 export interface SettingsInput {
-  highValueThreshold?: number;
   defaultSort?: string | null;
   defaultViewId?: string | null;
   defaultColumns?: OrderColumnId[];
   rowsPerPage?: number;
-  codEnabled?: boolean;
-  defaultCodStatus?: "NOT_COD" | "PENDING" | "VERIFIED" | "FAILED" | "CANCELLED";
 }
 
 export async function updateSettings(shopId: string, input: SettingsInput) {
@@ -24,9 +21,6 @@ export async function updateSettings(shopId: string, input: SettingsInput) {
   return prisma.shopSettings.update({
     where: { shopId },
     data: {
-      ...(input.highValueThreshold !== undefined
-        ? { highValueThreshold: input.highValueThreshold }
-        : {}),
       ...(input.defaultSort !== undefined ? { defaultSort: input.defaultSort } : {}),
       ...(input.defaultViewId !== undefined
         ? { defaultViewId: input.defaultViewId }
@@ -36,10 +30,6 @@ export async function updateSettings(shopId: string, input: SettingsInput) {
         : {}),
       ...(input.rowsPerPage !== undefined
         ? { rowsPerPage: Math.min(Math.max(input.rowsPerPage, 10), 250) }
-        : {}),
-      ...(input.codEnabled !== undefined ? { codEnabled: input.codEnabled } : {}),
-      ...(input.defaultCodStatus !== undefined
-        ? { defaultCodStatus: input.defaultCodStatus }
         : {}),
     },
   });
