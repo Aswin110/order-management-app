@@ -25,7 +25,7 @@ import { applyBulkAction } from "../services/bulk.server";
 import { parseOrdersPageParams, buildOrdersSearch } from "../lib/params";
 import { adminOrderUrl } from "../lib/admin-url";
 import { CodBadge } from "../components/CodBadge";
-import { FinancialStatusBadge, FulfillmentStatusBadge, RiskBadge } from "../components/StatusBadges";
+import { FinancialStatusBadge, FulfillmentStatusBadge } from "../components/StatusBadges";
 import { ColumnChooser } from "../components/ColumnChooser";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -191,8 +191,6 @@ function cellFor(column: OrderColumnId, order: OrderRow) {
       return order.cod ? <CodBadge status={order.codStatus} /> : "-";
     case "assignedStaff":
       return order.assignedStaffName ?? "-";
-    case "riskLevel":
-      return <RiskBadge level={order.riskLevel} />;
     default:
       return "-";
   }

@@ -16,7 +16,6 @@ const node: AdminOrderNode = {
   currencyCode: "INR",
   totalPriceSet: { shopMoney: { amount: "2499.00", currencyCode: "INR" } },
   tags: ["Priority"],
-  riskLevel: "HIGH",
   paymentGatewayNames: ["Cash on Delivery (COD)"],
   customer: { displayName: "John Mathew", email: "john@example.com", phone: "+919999999999" },
   lineItems: {

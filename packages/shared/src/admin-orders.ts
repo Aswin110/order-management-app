@@ -43,7 +43,6 @@ export interface AdminOrderNode {
   totalShippingPriceSet?: AdminMoneySet | null;
   totalTaxSet?: AdminMoneySet | null;
   tags?: string[] | null;
-  riskLevel?: string | null;
   note?: string | null;
   paymentGatewayNames?: Array<string | null> | null;
   customer?: {
@@ -99,7 +98,6 @@ export interface OrderListItem {
   assignedStaffName: string | null;
   notesCount: number;
   latestNote: string | null;
-  riskLevel: string | null;
   cancelledAt: string | null;
 }
 
@@ -185,7 +183,6 @@ export function mapAdminOrderToListItem(
     assignedStaffName: o.assignedStaffName,
     notesCount: o.notesCount,
     latestNote: o.latestNote,
-    riskLevel: order.riskLevel ?? null,
     cancelledAt: order.cancelledAt ?? null,
   };
 }

@@ -19,8 +19,3 @@ export function FulfillmentStatusBadge({ status }: { status: string | null }) {
   return <s-badge tone={tone}>{s.replace(/_/g, " ")}</s-badge>;
 }
 
-export function RiskBadge({ level }: { level: string | null }) {
-  if (!level || level === "NONE") return null;
-  const tone: Tone = level === "HIGH" ? "critical" : level === "MEDIUM" ? "warning" : "info";
-  return <s-badge tone={tone}>{`${level.charAt(0)}${level.slice(1).toLowerCase()} risk`}</s-badge>;
-}
