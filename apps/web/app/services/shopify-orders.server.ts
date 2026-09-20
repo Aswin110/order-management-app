@@ -32,6 +32,7 @@ const ORDER_FIELDS = `#graphql
     tags
     note
     paymentGatewayNames
+    shippingLine { title }
     customer { displayName firstName lastName email phone }
     shippingAddress {
       name address1 address2 city provinceCode zip countryCodeV2 phone
@@ -43,9 +44,13 @@ const ORDER_FIELDS = `#graphql
         variantTitle
         quantity
         sku
+        vendor
+        unfulfilledQuantity
+        requiresShipping
         image { url altText }
         originalUnitPriceSet { shopMoney { amount } }
         discountedTotalSet { shopMoney { amount } }
+        totalDiscountSet { shopMoney { amount } }
         customAttributes { key value }
       }
       pageInfo { hasNextPage }
@@ -100,6 +105,7 @@ const ORDER_DETAILS_QUERY = `#graphql
       tags
       note
       paymentGatewayNames
+      shippingLine { title }
       customer { displayName firstName lastName email phone }
       shippingAddress {
         name address1 address2 city provinceCode zip countryCodeV2 phone
@@ -111,9 +117,13 @@ const ORDER_DETAILS_QUERY = `#graphql
           variantTitle
           quantity
           sku
+          vendor
+          unfulfilledQuantity
+          requiresShipping
           image { url altText }
           originalUnitPriceSet { shopMoney { amount } }
           discountedTotalSet { shopMoney { amount } }
+          totalDiscountSet { shopMoney { amount } }
           customAttributes { key value }
         }
         pageInfo { hasNextPage }

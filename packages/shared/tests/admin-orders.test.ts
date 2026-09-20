@@ -80,6 +80,73 @@ describe("mapAdminOrderToListItem", () => {
     expect(row.hasMoreItems).toBe(false);
   });
 
+  it("maps the note, ship-to, payment method and delivery method", () => {
+    const row = mapAdminOrderToListItem({
+      ...node,
+      note: "  Gift wrap in red  ",
+      shippingLine: { title: "Standard" },
+      shippingAddress: {
+        address1: "12 MG Road",
+        address2: "Flat 4",
+        city: "Bengaluru",
+        provinceCode: "KA",
+        zip: "560001",
+        countryCodeV2: "IN",
+      },
+    });
+    expect(row.note).toBe("Gift wrap in red");
+    expect(row.shipTo).toBe("Bengaluru, KA, IN");
+    expect(row.shipToFull).toBe("12 MG Road, Flat 4, Bengaluru, KA, 560001, IN");
+    expect(row.paymentMethod).toBe("Cash on Delivery (COD)");
+    expect(row.deliveryMethod).toBe("Standard");
+  });
+
+  it("leaves the new fields null when Shopify omits them", () => {
+    const row = mapAdminOrderToListItem({ id: "gid://shopify/Order/1" });
+    expect(row.note).toBeNull();
+    expect(row.shipTo).toBeNull();
+    expect(row.paymentMethod).toBeNull();
+    expect(row.deliveryMethod).toBeNull();
+  });
+
+  it("maps the extra line item production fields", () => {
+    const row = mapAdminOrderToListItem({
+      ...node,
+      lineItems: {
+        nodes: [
+          {
+            id: "li-1",
+            title: "Engraved Pen",
+            quantity: 3,
+            vendor: "  Acme Pottery  ",
+            unfulfilledQuantity: 2,
+            requiresShipping: false,
+            totalDiscountSet: { shopMoney: { amount: "100.00" } },
+          },
+        ],
+      },
+    });
+    const item = row.items[0]!;
+    expect(item.vendor).toBe("Acme Pottery");
+    expect(item.unfulfilledQuantity).toBe(2);
+    expect(item.requiresShipping).toBe(false);
+    expect(item.lineDiscount).toBe("100.00");
+  });
+
+  it("falls back sensibly when the production fields are absent", () => {
+    const row = mapAdminOrderToListItem({
+      ...node,
+      lineItems: { nodes: [{ id: "li-1", title: "Mug", quantity: 4 }] },
+    });
+    const item = row.items[0]!;
+    expect(item.vendor).toBeNull();
+    // Nothing fulfilled yet, so the whole quantity still has to be made.
+    expect(item.unfulfilledQuantity).toBe(4);
+    expect(item.requiresShipping).toBe(true);
+    // A zero discount is not worth showing.
+    expect(item.lineDiscount).toBeNull();
+  });
+
   it("flags non-COD gateways as not COD", () => {
     const row = mapAdminOrderToListItem({ ...node, paymentGatewayNames: ["shopify_payments"] });
     expect(row.cod).toBe(false);

@@ -21,9 +21,13 @@ export interface AdminLineItemNode {
   variantTitle?: string | null;
   quantity?: number | null;
   sku?: string | null;
+  vendor?: string | null;
+  unfulfilledQuantity?: number | null;
+  requiresShipping?: boolean | null;
   image?: { url?: string | null; altText?: string | null } | null;
   originalUnitPriceSet?: AdminMoneySet | null;
   discountedTotalSet?: AdminMoneySet | null;
+  totalDiscountSet?: AdminMoneySet | null;
   customAttributes?: AdminLineItemCustomAttribute[] | null;
 }
 
@@ -46,6 +50,7 @@ export interface AdminOrderNode {
   tags?: string[] | null;
   note?: string | null;
   paymentGatewayNames?: Array<string | null> | null;
+  shippingLine?: { title?: string | null } | null;
   customer?: {
     displayName?: string | null;
     firstName?: string | null;
@@ -87,6 +92,16 @@ export interface OrderListItem {
   /** Derived from Shopify's payment gateway names, not stored anywhere. */
   cod: boolean;
   cancelledAt: string | null;
+  /** The merchant-facing note on the Shopify order. */
+  note: string | null;
+  /** "City, Province, Country" from the shipping address. */
+  shipTo: string | null;
+  /** Full shipping address on one line, for print and CSV. */
+  shipToFull: string | null;
+  /** Gateway names as shown in the Shopify admin, e.g. "Cash on Delivery". */
+  paymentMethod: string | null;
+  /** The shipping rate the customer chose, e.g. "Standard". */
+  deliveryMethod: string | null;
 }
 
 export interface OrderLineItem {
@@ -95,11 +110,34 @@ export interface OrderLineItem {
   variantTitle: string | null;
   quantity: number;
   sku: string | null;
+  /** Product vendor, useful when work is split across makers or suppliers. */
+  vendor: string | null;
+  /** How many of this line still have to be made and shipped. */
+  unfulfilledQuantity: number;
+  /** false for digital goods, which need no production or packing. */
+  requiresShipping: boolean;
   imageUrl: string | null;
   imageAlt: string | null;
   unitPrice: string | null;
   lineTotal: string | null;
+  /** Discount applied to this line, if any. */
+  lineDiscount: string | null;
   customAttributes: AdminLineItemCustomAttribute[];
+}
+
+function shipToOf(order: AdminOrderNode): string | null {
+  const a = order.shippingAddress;
+  if (!a) return null;
+  const parts = [a.city, a.provinceCode, a.countryCodeV2].filter(Boolean);
+  return parts.length ? parts.join(", ") : null;
+}
+
+function shipToFullOf(order: AdminOrderNode): string | null {
+  const a = order.shippingAddress;
+  if (!a) return null;
+  const parts = [a.address1, a.address2, a.city, a.provinceCode, a.zip, a.countryCodeV2]
+    .filter(Boolean);
+  return parts.length ? parts.join(", ") : null;
 }
 
 function customerNameOf(order: AdminOrderNode): string | null {
@@ -111,16 +149,23 @@ function customerNameOf(order: AdminOrderNode): string | null {
 }
 
 export function mapLineItem(item: AdminLineItemNode): OrderLineItem {
+  const quantity = item.quantity ?? 0;
+  const discount = item.totalDiscountSet?.shopMoney?.amount ?? null;
   return {
     id: item.id,
     title: item.title ?? "Untitled item",
     variantTitle: item.variantTitle || null,
-    quantity: item.quantity ?? 0,
+    quantity,
     sku: item.sku || null,
+    vendor: item.vendor?.trim() || null,
+    // Shopify omits the field on older orders; assume nothing is made yet.
+    unfulfilledQuantity: item.unfulfilledQuantity ?? quantity,
+    requiresShipping: item.requiresShipping ?? true,
     imageUrl: item.image?.url ?? null,
     imageAlt: item.image?.altText ?? item.title ?? null,
     unitPrice: item.originalUnitPriceSet?.shopMoney?.amount ?? null,
     lineTotal: item.discountedTotalSet?.shopMoney?.amount ?? null,
+    lineDiscount: discount && Number(discount) > 0 ? discount : null,
     customAttributes: (item.customAttributes ?? []).filter(
       (a): a is AdminLineItemCustomAttribute => Boolean(a?.key),
     ),
@@ -152,6 +197,12 @@ export function mapAdminOrderToListItem(order: AdminOrderNode): OrderListItem {
     tags: (order.tags ?? []).filter((t): t is string => typeof t === "string" && t.length > 0),
     cod: isCodOrder(order.paymentGatewayNames ?? []),
     cancelledAt: order.cancelledAt ?? null,
+    note: order.note?.trim() || null,
+    shipTo: shipToOf(order),
+    shipToFull: shipToFullOf(order),
+    paymentMethod:
+      (order.paymentGatewayNames ?? []).filter(Boolean).join(", ") || null,
+    deliveryMethod: order.shippingLine?.title?.trim() || null,
   };
 }
 

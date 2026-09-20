@@ -119,7 +119,7 @@ function LineItemsBand({ order }: { order: OrderRow }) {
       {order.items.map((item) => (
         <s-grid
           key={item.id}
-          gridTemplateColumns="auto minmax(0, 1fr) minmax(0, 1.5fr)"
+          gridTemplateColumns="auto minmax(0, 1fr) minmax(0, 1.3fr) auto"
           gap="base"
           alignItems="start"
         >
@@ -132,9 +132,20 @@ function LineItemsBand({ order }: { order: OrderRow }) {
           <s-stack direction="block" gap="small-500">
             <s-text type="strong">{item.title}</s-text>
             {item.variantTitle ? <s-text color="subdued">{item.variantTitle}</s-text> : null}
+            {item.vendor ? <s-text color="subdued">{item.vendor}</s-text> : null}
             <s-text color="subdued">
               x{item.quantity} · SKU: {item.sku ?? "N/A"}
             </s-text>
+            <s-stack direction="inline" gap="small-500">
+              {/* What is still to be made is the thing a production queue
+                  actually needs; a fully fulfilled line is done. */}
+              {item.unfulfilledQuantity > 0 ? (
+                <s-badge tone="warning">{item.unfulfilledQuantity} to make</s-badge>
+              ) : (
+                <s-badge tone="success">Fulfilled</s-badge>
+              )}
+              {item.requiresShipping ? null : <s-badge tone="info">Digital</s-badge>}
+            </s-stack>
           </s-stack>
           {item.customAttributes.length ? (
             <s-stack direction="block" gap="small-500">
@@ -150,6 +161,15 @@ function LineItemsBand({ order }: { order: OrderRow }) {
           ) : (
             <s-box />
           )}
+          <s-stack direction="block" gap="small-500" alignItems="end">
+            <s-text type="strong">{money(item.lineTotal, order.currency)}</s-text>
+            {item.quantity > 1 ? (
+              <s-text color="subdued">{money(item.unitPrice, order.currency)} each</s-text>
+            ) : null}
+            {item.lineDiscount ? (
+              <s-text tone="success">-{money(item.lineDiscount, order.currency)}</s-text>
+            ) : null}
+          </s-stack>
         </s-grid>
       ))}
       {order.hasMoreItems ? (
@@ -207,6 +227,21 @@ function cellFor(column: OrderColumnId, order: OrderRow, shopDomain: string) {
       ) : "-";
     case "cod":
       return order.cod ? <s-badge tone="warning">COD</s-badge> : "-";
+    case "itemCount":
+      return <s-text>{order.itemCount}</s-text>;
+    case "note":
+      // Order notes run long; the detail page has the untruncated text.
+      return order.note ? (
+        <s-text color="subdued">
+          {order.note.length > 120 ? `${order.note.slice(0, 120)}…` : order.note}
+        </s-text>
+      ) : "-";
+    case "shipTo":
+      return order.shipTo ?? "-";
+    case "paymentMethod":
+      return order.paymentMethod ?? "-";
+    case "deliveryMethod":
+      return order.deliveryMethod ?? "-";
     default:
       return "-";
   }
@@ -227,6 +262,11 @@ const COLUMN_WIDTH: Record<OrderColumnId, string> = {
   fulfillmentStatus: "minmax(115px, 0.9fr)",
   cod: "minmax(70px, 0.5fr)",
   tags: "minmax(120px, 1fr)",
+  itemCount: "minmax(60px, 0.4fr)",
+  note: "minmax(180px, 1.6fr)",
+  shipTo: "minmax(140px, 1.1fr)",
+  paymentMethod: "minmax(130px, 1fr)",
+  deliveryMethod: "minmax(110px, 0.8fr)",
 };
 
 const BULK_MODAL = "bulk-action-modal";

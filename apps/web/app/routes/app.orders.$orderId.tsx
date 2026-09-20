@@ -82,7 +82,20 @@ export default function OrderDetailsPage() {
                       {item.quantity} × {item.title}
                     </s-text>
                     {item.variantTitle ? <s-text color="subdued">{item.variantTitle}</s-text> : null}
+                    {item.vendor ? <s-text color="subdued">{item.vendor}</s-text> : null}
                     {item.sku ? <s-text color="subdued">SKU: {item.sku}</s-text> : null}
+                    <s-stack direction="inline" gap="small-500">
+                      {(item.unfulfilledQuantity ?? item.quantity ?? 0) > 0 ? (
+                        <s-badge tone="warning">
+                          {item.unfulfilledQuantity ?? item.quantity} to make
+                        </s-badge>
+                      ) : (
+                        <s-badge tone="success">Fulfilled</s-badge>
+                      )}
+                      {item.requiresShipping === false ? (
+                        <s-badge tone="info">Digital</s-badge>
+                      ) : null}
+                    </s-stack>
                     {(item.customAttributes ?? []).length ? (
                       <s-stack direction="block" gap="small-500">
                         {(item.customAttributes ?? []).map((attr) => (

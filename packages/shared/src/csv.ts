@@ -16,6 +16,11 @@ export const CSV_HEADERS = [
   "Fulfillment status",
   "COD",
   "Tags",
+  "Units",
+  "Payment method",
+  "Delivery method",
+  "Ship to",
+  "Order note",
 ] as const;
 
 export function escapeCsvCell(value: string): string {
@@ -39,6 +44,11 @@ export function orderToCsvRow(order: OrderListItem): string {
     order.fulfillmentStatus ?? "",
     order.cod ? "Yes" : "No",
     order.tags.join(" "),
+    String(order.itemCount),
+    order.paymentMethod ?? "",
+    order.deliveryMethod ?? "",
+    order.shipToFull ?? "",
+    order.note ?? "",
   ];
   return cells.map(escapeCsvCell).join(",");
 }
