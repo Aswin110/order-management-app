@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+// A calendar day, YYYY-MM-DD. A malformed value in a URL is dropped rather
+// than failing the whole page.
+const calendarDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .optional()
+  .catch(undefined);
+
 /**
  * Filters that translate directly into the Shopify Admin order search
  * syntax (see buildOrderSearchQuery). Every filter must be expressible as
@@ -13,8 +21,24 @@ export const orderFiltersSchema = z.object({
   financial: z
     .enum(["ANY", "PAID", "PENDING", "AUTHORIZED", "REFUNDED"])
     .default("ANY"),
+  status: z.enum(["ANY", "OPEN", "CLOSED", "CANCELLED"]).default("ANY"),
+  payment: z.enum(["ANY", "COD", "PREPAID"]).default("ANY"),
+  delivery: z
+    .enum(["ANY", "SHIPPING", "LOCAL", "PICK_UP", "PICKUP_POINT", "RETAIL", "NONE"])
+    .default("ANY"),
   tag: z.string().trim().max(100).optional(),
-  dateRange: z.enum(["ANY", "TODAY", "LAST_7_DAYS", "LAST_30_DAYS"]).default("ANY"),
+  tagNot: z.string().trim().max(100).optional(),
+  sku: z.string().trim().max(100).optional(),
+  // Workflow stage / assignee slug (see workflow.ts), or "none" for orders
+  // that have no stage / nobody assigned.
+  stage: z.string().trim().max(40).optional(),
+  assignee: z.string().trim().max(40).optional(),
+  dateRange: z
+    .enum(["ANY", "TODAY", "LAST_7_DAYS", "LAST_30_DAYS", "CUSTOM"])
+    .default("ANY"),
+  // Inclusive bounds, used when dateRange is CUSTOM.
+  dateFrom: calendarDay,
+  dateTo: calendarDay,
   search: z.string().trim().max(200).optional(),
 });
 

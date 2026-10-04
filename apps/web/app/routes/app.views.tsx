@@ -13,8 +13,8 @@ import {
   deleteSavedView,
   duplicateSavedView,
 } from "../services/views.server";
-import { buildOrdersSearch } from "../lib/params";
-import type { OrderFilters, OrderSort, OrderColumnId } from "@order-operations/shared";
+import { buildOrdersSearch, normalizeFilters } from "../lib/params";
+import type { OrderSort, OrderColumnId } from "@order-operations/shared";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -24,7 +24,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     views: views.map((v) => ({
       id: v.id,
       name: v.name,
-      filters: v.filters,
+      filters: normalizeFilters(v.filters),
       sort: v.sort,
       columns: v.columns,
       createdAt: v.createdAt.toISOString(),
@@ -99,7 +99,7 @@ export default function SavedViewsPage() {
                         onClick={() =>
                           navigate(
                             `/app/orders${buildOrdersSearch(
-                              view.filters as unknown as OrderFilters,
+                              view.filters,
                               (view.sort as unknown as OrderSort) ?? { column: "orderedAt", direction: "desc" },
                               (view.columns as OrderColumnId[]).length ? (view.columns as OrderColumnId[]) : undefined,
                             )}`,

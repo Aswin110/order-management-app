@@ -9,6 +9,8 @@ export const ORDER_COLUMNS = [
   { id: "totalPrice", label: "Total" },
   { id: "financialStatus", label: "Payment" },
   { id: "fulfillmentStatus", label: "Fulfillment" },
+  { id: "stage", label: "Stage" },
+  { id: "assignee", label: "Assigned to" },
   { id: "cod", label: "COD" },
   { id: "tags", label: "Tags" },
   { id: "itemCount", label: "Units" },
@@ -28,6 +30,7 @@ export const DEFAULT_COLUMNS: OrderColumnId[] = [
   "totalPrice",
   "financialStatus",
   "fulfillmentStatus",
+  "stage",
   "cod",
   "tags",
 ];

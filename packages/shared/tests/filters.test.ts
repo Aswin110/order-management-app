@@ -10,6 +10,18 @@ describe("orderFiltersSchema", () => {
     expect(f.tag).toBeUndefined();
     expect(f.search).toBeUndefined();
   });
+  it("defaults the newer filters to \"any\"", () => {
+    const f = orderFiltersSchema.parse({});
+    expect(f.status).toBe("ANY");
+    expect(f.payment).toBe("ANY");
+    expect(f.delivery).toBe("ANY");
+    expect(f.stage).toBeUndefined();
+  });
+  it("drops a malformed custom date instead of failing", () => {
+    const f = orderFiltersSchema.parse({ dateRange: "CUSTOM", dateFrom: "yesterday", dateTo: "2026-10-03" });
+    expect(f.dateFrom).toBeUndefined();
+    expect(f.dateTo).toBe("2026-10-03");
+  });
   it("rejects invalid enum values", () => {
     expect(() => orderFiltersSchema.parse({ fulfillment: "BOGUS" })).toThrow();
     expect(() => orderFiltersSchema.parse({ dateRange: "YESTERDAY" })).toThrow();

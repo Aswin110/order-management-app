@@ -5,6 +5,7 @@
 // the app stores nothing about an order.
 
 import { isCodOrder } from "./cod";
+import { readWorkflow, type WorkflowState } from "./workflow";
 
 export interface AdminMoneySet {
   shopMoney?: { amount?: string | null; currencyCode?: string | null } | null;
@@ -37,6 +38,8 @@ export interface AdminOrderNode {
   createdAt?: string | null;
   processedAt?: string | null;
   cancelledAt?: string | null;
+  cancelReason?: string | null;
+  closed?: boolean | null;
   email?: string | null;
   phone?: string | null;
   displayFinancialStatus?: string | null;
@@ -72,6 +75,30 @@ export interface AdminOrderNode {
     nodes?: AdminLineItemNode[] | null;
     pageInfo?: { hasNextPage?: boolean | null } | null;
   } | null;
+  // Only the order details query asks for the fields below.
+  discountCodes?: string[] | null;
+  fulfillments?: AdminFulfillmentNode[] | null;
+  refunds?: AdminRefundNode[] | null;
+}
+
+export interface AdminFulfillmentNode {
+  id: string;
+  displayStatus?: string | null;
+  createdAt?: string | null;
+  deliveredAt?: string | null;
+  totalQuantity?: number | null;
+  trackingInfo?: Array<{
+    company?: string | null;
+    number?: string | null;
+    url?: string | null;
+  }> | null;
+}
+
+export interface AdminRefundNode {
+  id: string;
+  createdAt?: string | null;
+  note?: string | null;
+  totalRefundedSet?: AdminMoneySet | null;
 }
 
 export interface OrderListItem {
@@ -92,6 +119,10 @@ export interface OrderListItem {
   /** Derived from Shopify's payment gateway names, not stored anywhere. */
   cod: boolean;
   cancelledAt: string | null;
+  /** Archived in Shopify: closed without being cancelled. */
+  archived: boolean;
+  /** Stage, assignee and COD confirmation, read from the order's tags. */
+  workflow: WorkflowState;
   /** The merchant-facing note on the Shopify order. */
   note: string | null;
   /** "City, Province, Country" from the shipping address. */
@@ -179,6 +210,9 @@ export function mapLineItem(item: AdminLineItemNode): OrderLineItem {
 export function mapAdminOrderToListItem(order: AdminOrderNode): OrderListItem {
   const nodes = order.lineItems?.nodes ?? [];
   const items = nodes.map(mapLineItem);
+  const tags = (order.tags ?? []).filter(
+    (t): t is string => typeof t === "string" && t.length > 0,
+  );
 
   return {
     shopifyOrderId: order.id,
@@ -194,9 +228,11 @@ export function mapAdminOrderToListItem(order: AdminOrderNode): OrderListItem {
     itemCount: items.reduce((sum, i) => sum + i.quantity, 0),
     items,
     hasMoreItems: Boolean(order.lineItems?.pageInfo?.hasNextPage),
-    tags: (order.tags ?? []).filter((t): t is string => typeof t === "string" && t.length > 0),
+    tags,
     cod: isCodOrder(order.paymentGatewayNames ?? []),
     cancelledAt: order.cancelledAt ?? null,
+    archived: Boolean(order.closed) && !order.cancelledAt,
+    workflow: readWorkflow(tags),
     note: order.note?.trim() || null,
     shipTo: shipToOf(order),
     shipToFull: shipToFullOf(order),

@@ -2,8 +2,9 @@
 // This app is an order viewer: Shopify is the source of truth for every
 // order, read live through the Admin GraphQL API. There is no local order
 // cache and no app-internal order state. The database holds only the
-// Shopify OAuth session plus each shop's viewing preferences - which
-// columns to show, how to sort, and any saved filter sets.
+// Shopify OAuth session plus each shop's preferences - which columns to
+// show, how to sort, any saved filter sets, and the workflow stage and
+// staff names. Workflow state itself is stored as Shopify order tags.
 
 generator client {
   provider = "prisma-client-js"
@@ -69,6 +70,12 @@ model ShopSettings {
   defaultSort    String? // e.g. "orderedAt:desc"
   defaultColumns String[] @default([])
   rowsPerPage    Int      @default(50)
+  // Workflow stage labels, in order. Empty means the built-in defaults.
+  workflowStages String[] @default([])
+  // People orders can be assigned to.
+  staffNames     String[] @default([])
+  // Show line item properties whose key starts with "_".
+  showInternalProperties Boolean @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

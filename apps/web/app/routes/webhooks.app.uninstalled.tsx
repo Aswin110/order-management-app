@@ -9,6 +9,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // Webhook requests can trigger multiple times and after an app has already been uninstalled.
   // If this webhook already ran, the session may have been deleted previously.
+  // Saved views and settings are kept until shop/redact (48 hours later), so a
+  // shop that reinstalls straight away finds them still there.
   if (session) {
     await db.session.deleteMany({ where: { shop } });
   }

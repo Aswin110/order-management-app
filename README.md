@@ -17,11 +17,17 @@ Not a replacement for Shopify Admin - a viewing and operations layer on top of i
   variant, unit price, and custom properties (personalization details) - the
   things a production team otherwise opens every order to see.
 - The order details page shows the complete order (up to 100 line items) with
-  totals, customer, shipping address, risk, and tags.
-- App-internal operational data (internal notes, COD verification status,
-  staff assignment, saved views, settings) is the only thing stored locally.
-  It is keyed by Shopify order id and created lazily on first use, so it works
-  for any order instantly.
+  totals, discount codes, fulfillments and tracking, refunds, customer,
+  shipping address, and tags.
+- A production summary totals what is still to be made across the filtered
+  orders, grouped by product, variant and customization.
+- Workflow state - stage, assignee, COD confirmation - is saved on the order
+  as Shopify tags (`stage:in-production`, `assigned:ravi`, `cod:confirmed`),
+  so it is visible in the Shopify admin and filterable with the native search.
+- Job sheets and packing slips print one page per selected order; CSV exports
+  come per order or per line item (one column per customization).
+- The only thing stored locally is each shop's preferences: saved views,
+  columns, sort, stage names and team member names. No order data.
 
 ## Tech stack
 
@@ -92,6 +98,11 @@ No Redis or background worker is required.
    Dashboard (App > API access > Protected customer data access). Order payloads
    contain customer PII.
 
+6. Request the **Read all orders** scope for the app (Partner Dashboard > Apps >
+   your app > API access requests). `read_all_orders` is listed in
+   `[access_scopes]`; without Shopify's approval the app cannot be granted it,
+   and without the scope Shopify only returns orders from the last 60 days.
+
 ## Running locally
 
 ```bash
@@ -111,6 +122,22 @@ pnpm typecheck    # tsc across all packages
 
 Tests mock the database boundary; they run without PostgreSQL.
 
+## Billing
+
+The app is priced at $2.99 per month through Shopify App Pricing (managed
+pricing). The plan and its price are not in the code: create the plan in the
+Partner Dashboard (your app > Pricing), and Shopify hosts the plan selection
+page and creates the subscription.
+
+The app only checks whether a shop has an active subscription and sends shops
+without one to the plan page. That check uses the Partner API and is switched
+on by setting these variables (see `.env.example`):
+
+- `SHOPIFY_PARTNER_ORG_ID`, `SHOPIFY_PARTNER_API_ACCESS_TOKEN`, `SHOPIFY_APP_GID`
+- `SHOPIFY_APP_HANDLE` if the app handle is not `order-operations`
+
+With none of them set (local development) billing is not enforced.
+
 ## Deployment
 
 1. Provision PostgreSQL.
@@ -127,14 +154,18 @@ A Dockerfile for the web app is included.
   queue, and no local order index; list/detail/print/CSV views all query the
   Admin GraphQL API directly.
 - Filtering and search use Shopify's native order search syntax
-  (`financial_status:paid`, `fulfillment_status:unfulfilled`, `tag:...`,
-  `created_at:>=...`, bare-term search across name/customer/email).
-- Bulk actions run inline (tag add/remove go to Shopify via `tagsAdd`/
-  `tagsRemove`; notes/COD/assignment update the local overlay) and are capped
-  at 50 selected orders per action.
-- CSV export is a synchronous download capped at 500 orders for the current
-  filter set.
-- The COD list filter was removed: it relied on the synced cache and cannot be
-  expressed reliably in Shopify's order search syntax. COD status is still
-  detected per order from the payment gateway and shown as a badge.
+  (`financial_status:paid`, `fulfillment_status:unfulfilled`, `status:open`,
+  `tag:...`, `tag_not:...`, `sku:...`, `delivery_method:...`,
+  `created_at:>=...`, bare-term search across name/customer/email). Date
+  filters are whole days in the shop's timezone.
+- Bulk actions run inline and only ever write tags to Shopify (`tagsAdd`/
+  `tagsRemove`): plain tags, and the stage/assignee/COD workflow tags. They are
+  capped at 50 selected orders per action.
+- CSV exports and the production summary are synchronous and capped at 500
+  orders for the current filter set.
+- The COD / prepaid filter matches the payment gateway name against the common
+  cash-on-delivery names (`COD_GATEWAY_NAMES` in `packages/shared/src/cod.ts`).
+  A store whose COD method has a different name needs it added there.
+- Searching by customization text is not possible: Shopify's order search does
+  not index line item properties, and the app keeps no local order index.
 - Every query is shop-scoped; there is no cross-shop data path.

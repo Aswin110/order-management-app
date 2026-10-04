@@ -26,9 +26,11 @@ export default function Index() {
     >
       <h1 style={{ marginBottom: "0.5rem" }}>Order Operations</h1>
       <p style={{ color: "#616161" }}>
-        A fast daily operations workflow for Shopify orders: configurable
-        columns, saved views, filters, bulk actions, internal notes, staff
-        assignment, and COD verification.
+        A fast daily operations view of your Shopify orders for teams making
+        custom products: every line item and its personalisation in the order
+        list, filters and saved views, a production summary, job sheets and
+        packing slips, CSV exports, and a simple stage, assignee and COD
+        confirmation workflow saved as order tags.
       </p>
       <p style={{ color: "#616161" }}>
         This is a Shopify embedded app. Open it from your store admin.

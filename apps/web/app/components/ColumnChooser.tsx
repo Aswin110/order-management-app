@@ -1,19 +1,31 @@
 import { useState } from "react";
 import { ORDER_COLUMNS, type OrderColumnId } from "@order-operations/shared";
 
+import { useDragReorder } from "../lib/drag-reorder";
+
 const POPOVER_ID = "order-columns-popover";
 
+const labelOf = (id: OrderColumnId) => ORDER_COLUMNS.find((c) => c.id === id)?.label ?? id;
+
+/**
+ * Picks which columns the orders table shows and in what order. The draft is
+ * the shown columns, left to right; drag a row to move it. Nothing changes
+ * until Apply.
+ */
 export function ColumnChooser(props: {
   selected: OrderColumnId[];
   onApply: (columns: OrderColumnId[]) => void;
 }) {
   const [draft, setDraft] = useState<OrderColumnId[]>(props.selected);
+  const drag = useDragReorder(draft, setDraft, "vertical");
 
   const toggle = (id: OrderColumnId) => {
     setDraft((current) =>
       current.includes(id) ? current.filter((c) => c !== id) : [...current, id],
     );
   };
+
+  const hidden = ORDER_COLUMNS.filter((column) => !draft.includes(column.id));
 
   return (
     <>
@@ -22,14 +34,24 @@ export function ColumnChooser(props: {
       <s-button commandFor={POPOVER_ID} command="--show" onClick={() => setDraft(props.selected)}>
         Columns
       </s-button>
-      <s-popover id={POPOVER_ID} inlineSize="260px">
+      <s-popover id={POPOVER_ID} inlineSize="280px">
         <s-box padding="base">
-          <s-stack direction="block" gap="base">
-            {ORDER_COLUMNS.map((column) => (
+          <s-stack direction="block" gap="small-200">
+            <s-text color="subdued">Shown - drag to reorder</s-text>
+            {draft.map((id) => (
+              <div key={id} {...drag.itemProps(id)}>
+                <s-stack direction="inline" gap="small-200" alignItems="center">
+                  <s-icon type="drag-handle" color="subdued" />
+                  <s-checkbox label={labelOf(id)} checked onChange={() => toggle(id)} />
+                </s-stack>
+              </div>
+            ))}
+            {hidden.length ? <s-text color="subdued">Hidden</s-text> : null}
+            {hidden.map((column) => (
               <s-checkbox
                 key={column.id}
                 label={column.label}
-                checked={draft.includes(column.id)}
+                checked={false}
                 onChange={() => toggle(column.id)}
               />
             ))}

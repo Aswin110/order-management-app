@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type CSSProperties } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -7,27 +7,38 @@ import type {
 import { useLoaderData, useNavigate, useFetcher, useSearchParams, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import {
+  COD_STATUSES,
   ORDER_COLUMNS,
+  WORKFLOW_NONE,
   mapAdminOrderToListItem,
+  plainTags,
+  slugify,
+  visibleAttributes,
+  workflowLabel,
   type OrderColumnId,
   type BulkActionPayload,
+  type WorkflowGroup,
 } from "@order-operations/shared";
 
 import { authenticate } from "../shopify.server";
 import { ensureShop } from "../services/shop.server";
-import { getOrCreateSettings, updateSettings } from "../services/settings.server";
-import { fetchOrdersPage } from "../services/shopify-orders.server";
+import { getOrCreateSettings, updateSettings, workflowConfig } from "../services/settings.server";
+import { fetchOrdersPage, orderSearchContext } from "../services/shopify-orders.server";
 import { listSavedViews, createSavedView } from "../services/views.server";
 import { applyBulkAction } from "../services/bulk.server";
-import { parseOrdersPageParams, buildOrdersSearch } from "../lib/params";
+import { parseOrdersPageParams, buildOrdersSearch, normalizeFilters } from "../lib/params";
 import { adminOrderUrl } from "../lib/admin-url";
+import { useDragReorder } from "../lib/drag-reorder";
 import { FinancialStatusBadge, FulfillmentStatusBadge } from "../components/StatusBadges";
 import { ColumnChooser } from "../components/ColumnChooser";
+import { Customizations } from "../components/Customizations";
+import { WorkflowSelect } from "../components/WorkflowSelect";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop);
   const settings = await getOrCreateSettings(shop.id);
+  const workflow = workflowConfig(settings);
 
   const url = new URL(request.url);
   const params = parseOrdersPageParams(url, settings.defaultColumns);
@@ -38,6 +49,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     pageSize: settings.rowsPerPage,
     cursor: params.cursor,
     direction: params.direction,
+    context: await orderSearchContext(admin, session.shop, workflow),
   });
 
   const views = await listSavedViews(shop.id);
@@ -51,7 +63,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     filters: params.filters,
     sort: params.sort,
     columns: params.columns,
-    views: views.map((v) => ({ id: v.id, name: v.name, filters: v.filters, sort: v.sort, columns: v.columns })),
+    workflow,
+    // Without read_all_orders Shopify only returns orders from the last 60 days.
+    recentOrdersOnly: !(session.scope ?? "").split(",").includes("read_all_orders"),
+    views: views.map((v) => ({
+      id: v.id,
+      name: v.name,
+      filters: normalizeFilters(v.filters),
+      sort: v.sort,
+      columns: v.columns,
+    })),
   };
 };
 
@@ -89,7 +110,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const actionPayload = JSON.parse(String(formData.get("bulkAction"))) as BulkActionPayload;
       const shopifyOrderIds = JSON.parse(String(formData.get("orderIds") ?? "[]")) as string[];
       const result = await applyBulkAction({ admin, shopifyOrderIds, action: actionPayload });
-      return { ok: true, message: `Bulk action applied to ${result.applied} orders` };
+      return {
+        ok: true,
+        message: `Updated ${result.applied} order${result.applied === 1 ? "" : "s"}`,
+      };
     }
 
     return { ok: false, message: `Unknown intent: ${intent}` };
@@ -113,13 +137,17 @@ function money(amount: string | null, currency: string | null): string {
  * variant, quantity/SKU and personalisation, so staff never have to open an
  * order to see what has to be made.
  */
-function LineItemsBand({ order }: { order: OrderRow }) {
+function LineItemsBand({ order, showInternal }: { order: OrderRow; showInternal: boolean }) {
   return (
     <s-stack direction="block" gap="base">
-      {order.items.map((item) => (
+      {order.items.map((item) => {
+        const customizations = visibleAttributes(item.customAttributes, showInternal);
+        return (
         <s-grid
           key={item.id}
-          gridTemplateColumns="auto minmax(0, 1fr) minmax(0, 1.3fr) auto"
+          // Item details have a fixed width so customizations start right
+          // after them and line up from one order to the next.
+          gridTemplateColumns="auto 260px minmax(0, 1fr) auto"
           gap="base"
           alignItems="start"
         >
@@ -147,16 +175,10 @@ function LineItemsBand({ order }: { order: OrderRow }) {
               {item.requiresShipping ? null : <s-badge tone="info">Digital</s-badge>}
             </s-stack>
           </s-stack>
-          {item.customAttributes.length ? (
+          {customizations.length ? (
             <s-stack direction="block" gap="small-500">
               <s-text color="subdued">Customizations</s-text>
-              <s-stack direction="inline" gap="small-500">
-                {item.customAttributes.map((attr) => (
-                  <s-chip key={attr.key}>
-                    {attr.key}: {attr.value}
-                  </s-chip>
-                ))}
-              </s-stack>
+              <Customizations attributes={customizations} />
             </s-stack>
           ) : (
             <s-box />
@@ -171,7 +193,8 @@ function LineItemsBand({ order }: { order: OrderRow }) {
             ) : null}
           </s-stack>
         </s-grid>
-      ))}
+        );
+      })}
       {order.hasMoreItems ? (
         <s-link href={`/app/orders/${encodeURIComponent(order.shopifyOrderId)}`}>
           Show all items
@@ -195,15 +218,28 @@ function DateCell({ iso }: { iso: string | null }) {
   );
 }
 
-function cellFor(column: OrderColumnId, order: OrderRow, shopDomain: string) {
+/** What a cell needs beyond the order itself. */
+interface CellContext {
+  shopDomain: string;
+  workflow: LoaderData["workflow"];
+  /** A workflow change is being saved; pickers are disabled until it lands. */
+  saving: boolean;
+  setWorkflow: (orderId: string, group: WorkflowGroup, value: string | null) => void;
+}
+
+function cellFor(column: OrderColumnId, order: OrderRow, ctx: CellContext) {
   switch (column) {
     case "name":
       // Opens the real order in the Shopify admin, in a new tab so the queue
       // this page is showing stays put.
       return (
-        <s-link href={adminOrderUrl(shopDomain, order.shopifyOrderId)} target="_blank">
-          <s-text type="strong">{order.name}</s-text>
-        </s-link>
+        <s-stack direction="block" gap="small-500">
+          <s-link href={adminOrderUrl(ctx.shopDomain, order.shopifyOrderId)} target="_blank">
+            <s-text type="strong">{order.name}</s-text>
+          </s-link>
+          {order.cancelledAt ? <s-badge tone="critical">Cancelled</s-badge> : null}
+          {order.archived ? <s-badge tone="neutral">Archived</s-badge> : null}
+        </s-stack>
       );
     case "orderedAt":
       return <DateCell iso={order.orderedAt} />;
@@ -221,12 +257,47 @@ function cellFor(column: OrderColumnId, order: OrderRow, shopDomain: string) {
       return <FulfillmentStatusBadge status={order.fulfillmentStatus} />;
     case "totalPrice":
       return <s-text type="strong">{money(order.totalPrice, order.currency)}</s-text>;
-    case "tags":
-      return order.tags.length ? (
-        <s-stack direction="inline" gap="small-500">{order.tags.slice(0, 3).map((t) => <s-badge key={t} tone="neutral">{t}</s-badge>)}</s-stack>
+    case "tags": {
+      // Workflow tags have their own columns; show only the ordinary ones.
+      const tags = plainTags(order.tags);
+      return tags.length ? (
+        <s-stack direction="inline" gap="small-500">{tags.slice(0, 3).map((t) => <s-badge key={t} tone="neutral">{t}</s-badge>)}</s-stack>
       ) : "-";
+    }
+    case "stage":
+      return (
+        <WorkflowSelect
+          label={`Stage of ${order.name}`}
+          value={order.workflow.stage}
+          options={ctx.workflow.stages}
+          emptyLabel="No stage"
+          disabled={ctx.saving}
+          onChange={(value) => ctx.setWorkflow(order.shopifyOrderId, "stage", value)}
+        />
+      );
+    case "assignee":
+      return (
+        <WorkflowSelect
+          label={`${order.name} assigned to`}
+          value={order.workflow.assignee}
+          options={ctx.workflow.staff}
+          emptyLabel="Unassigned"
+          disabled={ctx.saving}
+          onChange={(value) => ctx.setWorkflow(order.shopifyOrderId, "assignee", value)}
+        />
+      );
     case "cod":
-      return order.cod ? <s-badge tone="warning">COD</s-badge> : "-";
+      return order.cod ? (
+        <WorkflowSelect
+          label={`COD confirmation for ${order.name}`}
+          value={order.workflow.cod}
+          options={COD_STATUSES.map((s) => s.label)}
+          emptyLabel="COD: unconfirmed"
+          prefix="COD: "
+          disabled={ctx.saving}
+          onChange={(value) => ctx.setWorkflow(order.shopifyOrderId, "cod", value)}
+        />
+      ) : "-";
     case "itemCount":
       return <s-text>{order.itemCount}</s-text>;
     case "note":
@@ -249,25 +320,46 @@ function cellFor(column: OrderColumnId, order: OrderRow, shopDomain: string) {
 
 const SORTABLE: OrderColumnId[] = ["name", "orderedAt", "totalPrice"];
 
-// The summary row is a grid rather than a table because each order is
-// followed by a band that spans every column, which a table cell cannot do.
-const COLUMN_WIDTH: Record<OrderColumnId, string> = {
-  name: "minmax(90px, 0.7fr)",
-  orderedAt: "minmax(100px, 0.7fr)",
-  customerName: "minmax(140px, 1.2fr)",
-  phone: "minmax(130px, 1fr)",
-  email: "minmax(170px, 1.3fr)",
-  totalPrice: "minmax(95px, 0.7fr)",
-  financialStatus: "minmax(105px, 0.8fr)",
-  fulfillmentStatus: "minmax(115px, 0.9fr)",
-  cod: "minmax(70px, 0.5fr)",
-  tags: "minmax(120px, 1fr)",
-  itemCount: "minmax(60px, 0.4fr)",
-  note: "minmax(180px, 1.6fr)",
-  shipTo: "minmax(140px, 1.1fr)",
-  paymentMethod: "minmax(130px, 1fr)",
-  deliveryMethod: "minmax(110px, 0.8fr)",
+// The list is one CSS grid shared by the header and every order row (each
+// row is a subgrid), so a column is exactly as wide as its widest cell and
+// columns sit close together instead of being stretched across the page. It
+// is a grid rather than a table because each order is followed by a band
+// that spans every column, which a table cell cannot do.
+//
+// Text columns are capped so a long value wraps instead of pushing the rest
+// off screen. The cap is on the cell, not the grid track, so a column never
+// shrinks below its content when the list is wider than the page - the list
+// scrolls sideways instead.
+const COLUMN_MAX_WIDTH: Partial<Record<OrderColumnId, number>> = {
+  customerName: 200,
+  email: 240,
+  tags: 220,
+  note: 280,
+  shipTo: 200,
+  paymentMethod: 200,
+  deliveryMethod: 160,
 };
+
+// Pickers have no natural width, so their columns are fixed.
+const PICKER_WIDTH: Partial<Record<OrderColumnId, number>> = {
+  stage: 150,
+  assignee: 150,
+  cod: 170,
+};
+
+const columnTrack = (id: OrderColumnId) =>
+  PICKER_WIDTH[id] ? `${PICKER_WIDTH[id]}px` : "max-content";
+
+// A header or order row: takes its columns from the list grid.
+const ROW_STYLE: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "subgrid",
+  gridColumn: "1 / -1",
+  alignItems: "center",
+  padding: "8px 12px",
+};
+
+const FULL_WIDTH: CSSProperties = { gridColumn: "1 / -1" };
 
 const BULK_MODAL = "bulk-action-modal";
 const SAVE_VIEW_MODAL = "save-view-modal";
@@ -277,10 +369,36 @@ const BULK_TITLES: Record<string, string> = {
   removeTag: "Remove tag",
 };
 
+// Value of the "clear" option in the bulk stage / assignee pickers.
+const BULK_CLEAR = "__clear__";
+
+const STATUS_LABELS: Record<string, string> = {
+  OPEN: "Open",
+  CLOSED: "Archived",
+  CANCELLED: "Cancelled",
+};
+
+const PAYMENT_LABELS: Record<string, string> = {
+  COD: "Cash on delivery",
+  PREPAID: "Prepaid",
+};
+
+const DELIVERY_LABELS: Record<string, string> = {
+  SHIPPING: "Shipping",
+  LOCAL: "Local delivery",
+  PICK_UP: "Pickup in store",
+  PICKUP_POINT: "Pickup point",
+  RETAIL: "Retail",
+  NONE: "No delivery",
+};
+
 export default function OrdersPage() {
   const data = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const fetcher = useFetcher<{ ok: boolean; message: string }>();
+  // One-click workflow changes on a row get their own fetcher so they do not
+  // replace the banner from a bulk action, and report only failures.
+  const workflowFetcher = useFetcher<{ ok: boolean; message: string }>();
   const [searchParams] = useSearchParams();
 
   const [queryValue, setQueryValue] = useState(data.filters.search ?? "");
@@ -289,6 +407,8 @@ export default function OrdersPage() {
   const [tagValue, setTagValue] = useState("");
   const [viewName, setViewName] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Bumped after a bulk stage/assignee pick so those pickers reset to their prompt.
+  const [bulkPickerKey, setBulkPickerKey] = useState(0);
 
   const navigateWith = useCallback(
     (overrides: Record<string, string | undefined>) => {
@@ -332,6 +452,20 @@ export default function OrdersPage() {
     );
   };
 
+  const setWorkflow = (orderId: string, group: WorkflowGroup, value: string | null) => {
+    const payload: BulkActionPayload = { type: "SET_WORKFLOW", group, value };
+    workflowFetcher.submit(
+      { intent: "bulk", bulkAction: JSON.stringify(payload), orderIds: JSON.stringify([orderId]) },
+      { method: "post" },
+    );
+  };
+
+  const bulkSetWorkflow = (group: WorkflowGroup, picked: string) => {
+    if (!picked) return;
+    runBulk({ type: "SET_WORKFLOW", group, value: picked === BULK_CLEAR ? null : picked });
+    setBulkPickerKey((k) => k + 1);
+  };
+
   const confirmBulkModal = () => {
     if (pendingBulk === "addTag") runBulk({ type: "ADD_TAG", tag: tagValue.trim() });
     if (pendingBulk === "removeTag") runBulk({ type: "REMOVE_TAG", tag: tagValue.trim() });
@@ -343,14 +477,44 @@ export default function OrdersPage() {
   const f = data.filters;
   if (f.fulfillment !== "ANY") appliedFilters.push({ key: "fulfillment", label: `Fulfillment: ${f.fulfillment.toLowerCase().replace(/_/g, " ")}`, onRemove: () => navigateWith({ fulfillment: undefined }) });
   if (f.financial !== "ANY") appliedFilters.push({ key: "financial", label: `Payment: ${f.financial.toLowerCase()}`, onRemove: () => navigateWith({ financial: undefined }) });
+  if (f.status !== "ANY") appliedFilters.push({ key: "status", label: `Status: ${STATUS_LABELS[f.status]?.toLowerCase()}`, onRemove: () => navigateWith({ status: undefined }) });
+  if (f.payment !== "ANY") appliedFilters.push({ key: "payment", label: `Payment method: ${PAYMENT_LABELS[f.payment]?.toLowerCase()}`, onRemove: () => navigateWith({ payment: undefined }) });
+  if (f.delivery !== "ANY") appliedFilters.push({ key: "delivery", label: `Delivery: ${DELIVERY_LABELS[f.delivery]?.toLowerCase()}`, onRemove: () => navigateWith({ delivery: undefined }) });
+  if (f.stage) appliedFilters.push({ key: "stage", label: f.stage === WORKFLOW_NONE ? "No stage" : `Stage: ${workflowLabel(f.stage, data.workflow.stages)}`, onRemove: () => navigateWith({ stage: undefined }) });
+  if (f.assignee) appliedFilters.push({ key: "assignee", label: f.assignee === WORKFLOW_NONE ? "Unassigned" : `Assigned to: ${workflowLabel(f.assignee, data.workflow.staff)}`, onRemove: () => navigateWith({ assignee: undefined }) });
   if (f.tag) appliedFilters.push({ key: "tag", label: `Tag: ${f.tag}`, onRemove: () => navigateWith({ tag: undefined }) });
-  if (f.dateRange !== "ANY") appliedFilters.push({ key: "range", label: f.dateRange.replace(/_/g, " ").toLowerCase(), onRemove: () => navigateWith({ range: undefined }) });
+  if (f.tagNot) appliedFilters.push({ key: "notTag", label: `Without tag: ${f.tagNot}`, onRemove: () => navigateWith({ notTag: undefined }) });
+  if (f.sku) appliedFilters.push({ key: "sku", label: `SKU: ${f.sku}`, onRemove: () => navigateWith({ sku: undefined }) });
+  if (f.dateRange === "CUSTOM") {
+    if (f.dateFrom || f.dateTo) appliedFilters.push({ key: "range", label: `${f.dateFrom ?? "…"} to ${f.dateTo ?? "…"}`, onRemove: () => navigateWith({ range: undefined, from: undefined, to: undefined }) });
+  } else if (f.dateRange !== "ANY") {
+    appliedFilters.push({ key: "range", label: f.dateRange.replace(/_/g, " ").toLowerCase(), onRemove: () => navigateWith({ range: undefined }) });
+  }
   if (f.search) appliedFilters.push({ key: "q", label: `Search: ${f.search}`, onRemove: () => navigateWith({ q: undefined }) });
 
-  const visibleColumns = ORDER_COLUMNS.filter((c) => data.columns.includes(c.id));
-  // Leading "auto" is the select checkbox; header and rows share this template
-  // so the summary columns line up.
-  const gridTemplate = ["auto", ...visibleColumns.map((c) => COLUMN_WIDTH[c.id])].join(" ");
+  // Columns show in the order the shop arranged them.
+  const visibleColumns = data.columns
+    .map((id) => ORDER_COLUMNS.find((c) => c.id === id))
+    .filter((c): c is (typeof ORDER_COLUMNS)[number] => Boolean(c));
+  const listStyle: CSSProperties = {
+    display: "grid",
+    // Select checkbox, the columns, then a spacer that takes any spare width
+    // so the columns stay packed to the left.
+    gridTemplateColumns: ["auto", ...visibleColumns.map((c) => columnTrack(c.id)), "1fr"].join(" "),
+    columnGap: "16px",
+  };
+
+  // Saves the arrangement for the shop and shows it straight away.
+  const applyColumns = (columns: OrderColumnId[]) => {
+    fetcher.submit({ intent: "columns", columns: columns.join(",") }, { method: "post" });
+    navigateWith({ cols: columns.join(",") });
+  };
+  // Dragging a column header onto another moves the column there.
+  const headerDrag = useDragReorder(
+    visibleColumns.map((c) => c.id),
+    applyColumns,
+    "horizontal",
+  );
 
   const sortBy = (columnId: OrderColumnId) => {
     const isCurrent = data.sort.column === columnId;
@@ -368,13 +532,35 @@ export default function OrdersPage() {
     navigate(`/app/orders?${params.toString()}`);
   };
 
+  // The same filters drive the exports and the production summary; the page
+  // cursor does not apply to them.
+  const filterParams = new URLSearchParams(searchParams);
+  filterParams.delete("cursor");
+  filterParams.delete("cursorDir");
+  const filterQuery = filterParams.size ? `?${filterParams.toString()}` : "";
+  const itemsCsvParams = new URLSearchParams(filterParams);
+  itemsCsvParams.set("format", "items");
+
+  const printHref = (type: "jobsheet" | "packing" | "list") =>
+    `/app/print?type=${type}&ids=${selectedIds.map(encodeURIComponent).join(",")}`;
+
+  const cellContext: CellContext = {
+    shopDomain: data.shopDomain,
+    workflow: data.workflow,
+    saving: workflowFetcher.state !== "idle",
+    setWorkflow,
+  };
+
   return (
     <s-page heading="Orders" inlineSize="large">
-      <s-button
-        slot="secondary-actions"
-        href={`/app/orders.csv${searchParams.size ? `?${searchParams.toString()}` : ""}`}
-      >
-        Export CSV
+      <s-button slot="secondary-actions" href={`/app/production${filterQuery}`}>
+        Production summary
+      </s-button>
+      <s-button slot="secondary-actions" href={`/app/orders.csv${filterQuery}`}>
+        Export orders CSV
+      </s-button>
+      <s-button slot="secondary-actions" href={`/app/orders.csv?${itemsCsvParams.toString()}`}>
+        Export line items CSV
       </s-button>
       <s-button slot="secondary-actions" commandFor={SAVE_VIEW_MODAL} command="--show">
         Save current view
@@ -382,6 +568,9 @@ export default function OrdersPage() {
 
       {fetcher.data?.message ? (
         <s-banner tone={fetcher.data.ok ? "success" : "critical"}>{fetcher.data.message}</s-banner>
+      ) : null}
+      {workflowFetcher.data && !workflowFetcher.data.ok ? (
+        <s-banner tone="critical">{workflowFetcher.data.message}</s-banner>
       ) : null}
 
       <s-section padding="none">
@@ -400,7 +589,7 @@ export default function OrdersPage() {
                   }
                   navigate(
                     `/app/orders${buildOrdersSearch(
-                      view.filters as unknown as typeof data.filters,
+                      view.filters,
                       (view.sort as never) ?? data.sort,
                       (view.columns as OrderColumnId[])?.length ? (view.columns as OrderColumnId[]) : data.columns,
                     )}`,
@@ -412,13 +601,7 @@ export default function OrdersPage() {
                   <s-option key={v.id} value={v.id}>{v.name}</s-option>
                 ))}
               </s-select>
-              <ColumnChooser
-                selected={data.columns}
-                onApply={(columns) => {
-                  fetcher.submit({ intent: "columns", columns: columns.join(",") }, { method: "post" });
-                  navigateWith({ cols: columns.join(",") });
-                }}
-              />
+              <ColumnChooser selected={data.columns} onApply={applyColumns} />
             </s-stack>
 
             <s-search-field
@@ -442,19 +625,86 @@ export default function OrdersPage() {
                 <s-option value="AUTHORIZED">Authorized</s-option>
                 <s-option value="REFUNDED">Refunded</s-option>
               </s-select>
-              <s-select label="Date" value={f.dateRange} onChange={(e) => navigateWith({ range: e.currentTarget.value })}>
+              <s-select label="Order status" value={f.status} onChange={(e) => navigateWith({ status: e.currentTarget.value })}>
+                <s-option value="ANY">Any</s-option>
+                {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                  <s-option key={value} value={value}>{label}</s-option>
+                ))}
+              </s-select>
+              <s-select label="Payment method" value={f.payment} onChange={(e) => navigateWith({ payment: e.currentTarget.value })}>
+                <s-option value="ANY">Any</s-option>
+                {Object.entries(PAYMENT_LABELS).map(([value, label]) => (
+                  <s-option key={value} value={value}>{label}</s-option>
+                ))}
+              </s-select>
+              <s-select label="Delivery" value={f.delivery} onChange={(e) => navigateWith({ delivery: e.currentTarget.value })}>
+                <s-option value="ANY">Any</s-option>
+                {Object.entries(DELIVERY_LABELS).map(([value, label]) => (
+                  <s-option key={value} value={value}>{label}</s-option>
+                ))}
+              </s-select>
+              <s-select label="Stage" value={f.stage ?? ""} onChange={(e) => navigateWith({ stage: e.currentTarget.value })}>
+                <s-option value="">Any</s-option>
+                <s-option value={WORKFLOW_NONE}>No stage</s-option>
+                {data.workflow.stages.map((label) => (
+                  <s-option key={label} value={slugify(label)}>{label}</s-option>
+                ))}
+              </s-select>
+              {data.workflow.staff.length ? (
+                <s-select label="Assigned to" value={f.assignee ?? ""} onChange={(e) => navigateWith({ assignee: e.currentTarget.value })}>
+                  <s-option value="">Anyone</s-option>
+                  <s-option value={WORKFLOW_NONE}>Unassigned</s-option>
+                  {data.workflow.staff.map((label) => (
+                    <s-option key={label} value={slugify(label)}>{label}</s-option>
+                  ))}
+                </s-select>
+              ) : null}
+              <s-select
+                label="Date"
+                value={f.dateRange}
+                onChange={(e) => {
+                  const range = e.currentTarget.value;
+                  // Preset ranges have no use for the custom bounds.
+                  navigateWith(range === "CUSTOM" ? { range } : { range, from: undefined, to: undefined });
+                }}
+              >
                 <s-option value="ANY">Any time</s-option>
                 <s-option value="TODAY">Today</s-option>
                 <s-option value="LAST_7_DAYS">Last 7 days</s-option>
                 <s-option value="LAST_30_DAYS">Last 30 days</s-option>
+                <s-option value="CUSTOM">Custom range</s-option>
               </s-select>
+              {f.dateRange === "CUSTOM" ? (
+                <>
+                  <s-date-field label="From" value={f.dateFrom ?? ""} onChange={(e) => navigateWith({ from: e.currentTarget.value || undefined })} />
+                  <s-date-field label="To" value={f.dateTo ?? ""} onChange={(e) => navigateWith({ to: e.currentTarget.value || undefined })} />
+                </>
+              ) : null}
               <s-text-field
                 label="Tag"
                 placeholder="Filter by tag"
                 value={f.tag ?? ""}
                 onChange={(e) => navigateWith({ tag: e.currentTarget.value || undefined })}
               />
+              <s-text-field
+                label="Without tag"
+                placeholder="Exclude a tag"
+                value={f.tagNot ?? ""}
+                onChange={(e) => navigateWith({ notTag: e.currentTarget.value || undefined })}
+              />
+              <s-text-field
+                label="SKU"
+                placeholder="Exact SKU"
+                value={f.sku ?? ""}
+                onChange={(e) => navigateWith({ sku: e.currentTarget.value || undefined })}
+              />
             </s-grid>
+
+            {data.recentOrdersOnly ? (
+              <s-text color="subdued">
+                Showing orders from the last 60 days. Older orders appear once the app is granted access to all orders.
+              </s-text>
+            ) : null}
 
             {appliedFilters.length ? (
               <s-stack direction="inline" gap="small-200" alignItems="center">
@@ -473,6 +723,37 @@ export default function OrdersPage() {
                   <s-text type="strong">{selectedIds.length} selected</s-text>
                   <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("addTag")}>Add tag</s-button>
                   <s-button variant="tertiary" commandFor={BULK_MODAL} command="--show" onClick={() => setPendingBulk("removeTag")}>Remove tag</s-button>
+                  <s-select
+                    key={`stage-${bulkPickerKey}`}
+                    label="Set stage for selected orders"
+                    labelAccessibilityVisibility="exclusive"
+                    value=""
+                    onChange={(e) => bulkSetWorkflow("stage", e.currentTarget.value)}
+                  >
+                    <s-option value="">Set stage…</s-option>
+                    {data.workflow.stages.map((label) => (
+                      <s-option key={label} value={slugify(label)}>{label}</s-option>
+                    ))}
+                    <s-option value={BULK_CLEAR}>Clear stage</s-option>
+                  </s-select>
+                  {data.workflow.staff.length ? (
+                    <s-select
+                      key={`assignee-${bulkPickerKey}`}
+                      label="Assign selected orders"
+                      labelAccessibilityVisibility="exclusive"
+                      value=""
+                      onChange={(e) => bulkSetWorkflow("assignee", e.currentTarget.value)}
+                    >
+                      <s-option value="">Assign to…</s-option>
+                      {data.workflow.staff.map((label) => (
+                        <s-option key={label} value={slugify(label)}>{label}</s-option>
+                      ))}
+                      <s-option value={BULK_CLEAR}>Unassign</s-option>
+                    </s-select>
+                  ) : null}
+                  <s-button variant="tertiary" href={printHref("jobsheet")}>Print job sheets</s-button>
+                  <s-button variant="tertiary" href={printHref("packing")}>Print packing slips</s-button>
+                  <s-button variant="tertiary" href={printHref("list")}>Print list</s-button>
                 </s-stack>
               </s-box>
             ) : null}
@@ -481,46 +762,61 @@ export default function OrdersPage() {
 
         {data.orders.length ? (
           <s-box>
-            <s-box padding="small-200" background="subdued">
-              <s-grid gridTemplateColumns={gridTemplate} gap="small-200" alignItems="center">
-                <s-checkbox accessibilityLabel="Select all orders" checked={allSelected} onChange={toggleAll} />
-                {visibleColumns.map((c) =>
-                  SORTABLE.includes(c.id) ? (
-                    <s-clickable key={c.id} onClick={() => sortBy(c.id)}>
-                      <s-text type="strong">
-                        {c.label}
-                        {data.sort.column === c.id ? (data.sort.direction === "asc" ? " ↑" : " ↓") : ""}
-                      </s-text>
-                    </s-clickable>
-                  ) : (
-                    <s-text key={c.id} type="strong">{c.label}</s-text>
-                  ),
-                )}
-              </s-grid>
-            </s-box>
+            {/* Scrolls sideways when the columns are wider than the page.
+                Positioned so absolutely placed parts of the pickers (their
+                hidden labels) scroll with it instead of widening the page. */}
+            <div style={{ overflowX: "auto", position: "relative" }}>
+              <div style={listStyle}>
+                {/* The header's background: a Polaris surface stretched under the header row. */}
+                <div style={{ ...FULL_WIDTH, gridRow: 1, display: "grid" }}>
+                  <s-box background="subdued" />
+                </div>
+                <div style={{ ...ROW_STYLE, gridRow: 1 }}>
+                  <s-checkbox accessibilityLabel="Select all orders" checked={allSelected} onChange={toggleAll} />
+                  {visibleColumns.map((c) => (
+                    <div key={c.id} title="Drag to move this column" {...headerDrag.itemProps(c.id)}>
+                      {SORTABLE.includes(c.id) ? (
+                        <s-clickable onClick={() => sortBy(c.id)}>
+                          <s-text type="strong">
+                            {c.label}
+                            {data.sort.column === c.id ? (data.sort.direction === "asc" ? " ↑" : " ↓") : ""}
+                          </s-text>
+                        </s-clickable>
+                      ) : (
+                        <s-text type="strong">{c.label}</s-text>
+                      )}
+                    </div>
+                  ))}
+                </div>
 
-            {data.orders.map((order) => (
-              <s-box key={order.shopifyOrderId}>
-                <s-divider />
-                <s-box padding="small-200">
-                  <s-grid gridTemplateColumns={gridTemplate} gap="small-200" alignItems="center">
-                    <s-checkbox
-                      accessibilityLabel={`Select ${order.name}`}
-                      checked={selectedIds.includes(order.shopifyOrderId)}
-                      onChange={() => toggleRow(order.shopifyOrderId)}
-                    />
-                    {visibleColumns.map((column) => (
-                      <s-box key={column.id}>{cellFor(column.id, order, data.shopDomain)}</s-box>
-                    ))}
-                  </s-grid>
-                </s-box>
-                {order.items.length ? (
-                  <s-box padding="base" background="subdued">
-                    <LineItemsBand order={order} />
-                  </s-box>
-                ) : null}
-              </s-box>
-            ))}
+                {data.orders.map((order) => (
+                  <div key={order.shopifyOrderId} style={{ ...FULL_WIDTH, display: "grid", gridTemplateColumns: "subgrid" }}>
+                    <div style={FULL_WIDTH}>
+                      <s-divider />
+                    </div>
+                    <div style={ROW_STYLE}>
+                      <s-checkbox
+                        accessibilityLabel={`Select ${order.name}`}
+                        checked={selectedIds.includes(order.shopifyOrderId)}
+                        onChange={() => toggleRow(order.shopifyOrderId)}
+                      />
+                      {visibleColumns.map((column) => (
+                        <div key={column.id} style={{ maxWidth: COLUMN_MAX_WIDTH[column.id] }}>
+                          {cellFor(column.id, order, cellContext)}
+                        </div>
+                      ))}
+                    </div>
+                    {order.items.length ? (
+                      <div style={FULL_WIDTH}>
+                        <s-box padding="base" background="subdued">
+                          <LineItemsBand order={order} showInternal={data.workflow.showInternalProperties} />
+                        </s-box>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
 
             <s-divider />
             <s-box padding="base">
